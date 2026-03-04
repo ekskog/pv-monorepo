@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photovault Uploader</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: border-color 0.3s;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .file-input-label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: #f8f9fa;
+      border: 2px dashed #d0d0d0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .file-input-label:hover {
+      background: #e9ecef;
+      border-color: #667eea;
+    }
+
+    input[type="file"] {
+      position: absolute;
+      left: -9999px;
+    }
+
+    .file-icon {
+      margin-right: 10px;
+      font-size: 20px;
+    }
+
+    .selected-files {
+      margin-top: 12px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #666;
+      display: none;
+    }
+
+    .selected-files.show {
+      display: block;
+    }
+
+    .file-list {
+      margin-top: 8px;
+    }
+
+    .file-item {
+      padding: 4px 0;
+      color: #333;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .message {
+      margin-top: 20px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .message.show {
+      display: block;
+    }
+
+    .message.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      margin-top: 16px;
+    }
+
+    .loading.show {
+      display: block;
+    }
+
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📸 Photovault Uploader</h1>
+    <p class="subtitle">Upload images to your pv</p>
+
+    <form id="uploadForm">
+      <div class="form-group">
+        <label for="directory">Directory Name</label>
+        <input 
+          type="text" 
+          id="directory" 
+          name="directory" 
+          placeholder="e.g., vacation-2024"
+          required
+        >
+      </div>
+
+      <div class="form-group">
+        <label>Select Images</label>
+        <div class="file-input-wrapper">
+          <label for="images" class="file-input-label">
+            <span class="file-icon">📁</span>
+            <span>Choose images...</span>
+          </label>
+          <input 
+            type="file" 
+            id="images" 
+            name="images" 
+            accept="image/*,.heic,.HEIC"
+            multiple
+            required
+          >
+        </div>
+        <div id="selectedFiles" class="selected-files"></div>
+      </div>
+
+      <button type="submit" id="submitBtn">Upload Images</button>
+    </form>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p style="margin-top: 12px; color: #666;">Uploading...</p>
+    </div>
+
+    <div id="message" class="message"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('images');
+    const selectedFilesDiv = document.getElementById('selectedFiles');
+    const messageDiv = document.getElementById('message');
+    const submitBtn = document.getElementById('submitBtn');
+    const loadingDiv = document.getElementById('loading');
+
+    // Update selected files display
+    fileInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length > 0) {
+        selectedFilesDiv.classList.add('show');
+        selectedFilesDiv.innerHTML = `
+          <strong>${files.length} file(s) selected:</strong>
+          <div class="file-list">
+            ${files.map(f => `<div class="file-item">• ${f.name}</div>`).join('')}
+          </div>
+        `;
+      } else {
+        selectedFilesDiv.classList.remove('show');
+        selectedFilesDiv.innerHTML = '';
+      }
+    });
+
+    // Handle form submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData();
+      const directory = document.getElementById('directory').value;
+      const files = fileInput.files;
+
+      formData.append('directory', directory);
+      for (let file of files) {
+        formData.append('images', file);
+      }
+
+      // Show loading state
+      submitBtn.disabled = true;
+      loadingDiv.classList.add('show');
+      messageDiv.classList.remove('show');
+
+      try {
+        const response = await fetch('/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        // Hide loading
+        loadingDiv.classList.remove('show');
+        submitBtn.disabled = false;
+
+        // Show message
+        messageDiv.classList.add('show');
+        if (response.ok) {
+          messageDiv.className = 'message success show';
+          messageDiv.textContent = result.message;
+          
+          // Reset form
+          form.reset();
+          selectedFilesDiv.classList.remove('show');
+          selectedFilesDiv.innerHTML = '';
+        } else {
+          messageDiv.className = 'message error show';
+          messageDiv.textContent = result.error + (result.details ? ': ' + result.details : '');
+        }
+      } catch (error) {
+        loadingDiv.classList.remove('show');
+        submitBtn.disabled = false;
+        messageDiv.className = 'message error show';
+        messageDiv.textContent = 'Upload failed: ' + error.message;
+      }
+    });
+  </script>
+</body>
+</html>

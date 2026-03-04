@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: photovault-client
+  namespace: photovault
+  labels:
+    app: photovault-client
+    component: client
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: photovault-client
+  template:
+    metadata:
+      labels:
+        app: photovault-client
+        component: client
+      annotations:
+        # This annotation will be updated by the CI/CD pipeline to force pod recreation
+        deployment.kubernetes.io/revision: "1"
+    spec:
+      containers:
+      - name: photovault-client
+        image: ghcr.io/ekskog/photovault-client:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        # API Configuration
+        - name: VITE_API_URL
+          value: "https://vault-api.ekskog.net"
+        # Debug Configuration
+        - name: VITE_DEBUG
+          value: "false"  # Set to "true" or "ekskog:*" to enable debug logging
+        - name: VITE_DEBUG_PATTERN
+          value: "ekskog:*"  # Debug pattern when debugging is enabled
+        # Load non-sensitive config from ConfigMap
+        envFrom:
+        - configMapRef:
+            name: photovault-client-config
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+            httpHeaders:
+            - name: User-Agent
+              value: "k8s-healthcheck"
+          initialDelaySeconds: 30
+          periodSeconds: 300
+          timeoutSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+            httpHeaders:
+            - name: User-Agent
+              value: "k8s-healthcheck"
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always

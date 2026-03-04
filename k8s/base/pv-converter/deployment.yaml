@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: avif-converter
+  namespace: photovault
+  labels:
+    app: avif-converter
+spec:
+  replicas: 3
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: avif-converter
+  template:
+    metadata:
+      labels:
+        app: avif-converter
+    spec:
+      containers:
+      - name: avif-converter
+        image: ghcr.io/ekskog/avif-converter:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "100m"
+          limits:
+            memory: "1024Mi"
+            cpu: "1000m"
+        
+        # Liveness probe only - comprehensive check twice per hour
+        # Pod becomes ready immediately when container starts
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30    # Wait 30 seconds after container starts
+          periodSeconds: 1800        # Check every 30 minutes (1800 seconds = twice per hour)
+          timeoutSeconds: 15         # Allow time for avifenc check
+          failureThreshold: 2        # Allow 2 failures before restarting pod

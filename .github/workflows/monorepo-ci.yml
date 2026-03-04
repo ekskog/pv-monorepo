@@ -1,0 +1,148 @@
+name: Monorepo CI Build & Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: pv-client
+            path: pv-client
+            context: pv-client
+            image: ghcr.io/ekskog/photovault-client
+            deployment: photovault-client
+          - name: pv-api
+            path: pv-api
+            context: pv-api
+            image: ghcr.io/ekskog/photovault-api
+            deployment: photovault-api
+          - name: pv-converter
+            path: pv-converter
+            context: pv-converter
+            image: ghcr.io/ekskog/avif-converter
+            deployment: avif-converter
+          - name: pv-temporal-worker
+            path: pv-temporal-worker
+            context: pv-temporal-worker/worker
+            image: ghcr.io/ekskog/pv-worker
+            deployment: pv-worker
+          - name: pv-uploader
+            path: pv-uploader
+            context: pv-uploader
+            image: ghcr.io/ekskog/pv-uploader
+            deployment: pv-uploader
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine if service changed
+        id: changed
+        run: |
+          echo "Checking for changes under '${{ matrix.path }}'"
+          git fetch --no-tags --prune --depth=1 origin ${{ github.ref }} || true
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} || true)
+          echo "files_changed<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          if echo "$CHANGED_FILES" | grep -E "^${{ matrix.path }}(/|$)" >/dev/null; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set short SHA
+        id: vars
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Skip if no changes
+        if: steps.changed.outputs.changed == 'false'
+        run: echo "No changes for ${{ matrix.name }}; skipping build"
+
+      - name: Set up Docker Buildx
+        if: steps.changed.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.changed.outputs.changed == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.EK_GITHUB_PAT }}
+
+      - name: Build and push image
+        if: steps.changed.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: |
+            ${{ matrix.image }}:${{ env.SHORT_SHA }}
+            ${{ matrix.image }}:latest
+
+      - name: Prepare kubeconfig
+        if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+        run: |
+          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
+            echo "KUBECONFIG secret not provided; skipping deploy steps"
+            exit 0
+          fi
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml
+          echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
+
+      - name: Create or update image pull secret
+        if: env.KUBECONFIG || steps.changed.outputs.changed == 'true'
+        run: |
+          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
+            echo "No kubeconfig; skipping image-pull-secret creation"
+            exit 0
+          fi
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password="${{ secrets.EK_GITHUB_PAT }}" \
+            --namespace=photovault \
+            --kubeconfig=kubeconfig.yaml \
+            --dry-run=client -o yaml | kubectl apply -f - --kubeconfig=kubeconfig.yaml
+
+      - name: Update deployment image and apply manifests
+        if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+        run: |
+          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
+            echo "No kubeconfig; skipping deployment"
+            exit 0
+          fi
+          IMAGE=${{ matrix.image }}:${{ env.SHORT_SHA }}
+          echo "Updating deployment ${{ matrix.deployment }} to $IMAGE"
+          kubectl set image deployment/${{ matrix.deployment }} \
+            ${{ matrix.deployment }}=$IMAGE --namespace=photovault --kubeconfig=kubeconfig.yaml || true
+
+          # Prefer consolidated manifests in k8s/base/<service>/, fall back to package-local k8s/
+          if [ -d "k8s/base/${{ matrix.name }}" ]; then
+            echo "Applying consolidated manifests: k8s/base/${{ matrix.name }}"
+            kubectl apply -f k8s/base/${{ matrix.name }} --kubeconfig=kubeconfig.yaml --namespace=photovault || true
+          elif [ -d "${{ matrix.path }}/k8s" ]; then
+            echo "Applying package manifests: ${{ matrix.path }}/k8s"
+            kubectl apply -f ${{ matrix.path }}/k8s --kubeconfig=kubeconfig.yaml --namespace=photovault || true
+          else
+            echo "No manifests found for ${{ matrix.name }}; skipping kubectl apply"
+          fi
+
+      - name: Wait for rollout
+        if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+        run: |
+          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
+            echo "No kubeconfig; skip rollout wait"
+            exit 0
+          fi
+          kubectl rollout status deployment/${{ matrix.deployment }} --namespace=photovault --kubeconfig=kubeconfig.yaml --timeout=300s || true
+
+      - name: Cleanup
+        if: always()
+        run: rm -f kubeconfig.yaml || true

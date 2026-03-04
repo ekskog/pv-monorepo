@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: photovault-api
+  namespace: photovault
+  labels:
+    app: photovault-api
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0 
+  selector:
+    matchLabels:
+      app: photovault-api
+  template:
+    metadata:
+      labels:
+        app: photovault-api
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      hostAliases:
+      - ip: "192.168.1.8"
+        hostnames:
+        - "mjolnir"
+      - ip: "192.168.1.10"
+        hostnames:
+        - "ubumac"  
+      containers:
+      - name: photovault-api
+        image: ghcr.io/ekskog/photovault-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+        envFrom:
+        - configMapRef:
+            name: photovault-api-config
+        - secretRef:
+            name: photovault-api-secret
+        volumeMounts:
+        - name: log-storage
+          mountPath: /app/logs
+        - name: nfs-vol
+          mountPath: /nfs-storage  # This is the "loading dock" for Temporal
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 120
+          periodSeconds: 3600        # Check once per hour
+          timeoutSeconds: 15         # Very generous
+          failureThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 300         # Check every 5 minutes
+          timeoutSeconds: 15
+          failureThreshold: 2
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+      volumes:
+      - name: log-storage
+        emptyDir: {}
+      - name: nfs-vol
+        persistentVolumeClaim:
+          claimName: nfs-photovault-claim # Ensure this PVC exists in 'photovault' namespace

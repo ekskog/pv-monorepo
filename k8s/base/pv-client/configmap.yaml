@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: photovault-client-config
+  namespace: photovault
+  labels:
+    app: photovault-client
+    component: frontend
+data:
+  # Non-sensitive configuration values
+  APP_NAME: "EKSKOG PHOTOS"
+  APP_VERSION: "1.0.0"
+  NODE_ENV: "production"
+  
+  # UI Configuration
+  VITE_APP_TITLE: "EKSKOG PHOTOS"
+  VITE_APP_DESCRIPTION: "Secure Photo Gallery"
+  
+  # Feature Flags
+  VITE_ENABLE_USER_MANAGEMENT: "true"
+  VITE_ENABLE_ALBUM_SHARING: "false"
+  VITE_ENABLE_PHOTO_COMMENTS: "false"
+  
+  # Performance Settings
+  VITE_MAX_UPLOAD_SIZE: "20485760"  # 10MB in bytes
+  VITE_THUMBNAIL_QUALITY: "80"
+  VITE_LAZY_LOADING: "true"
+  
+  # Debug Configuration (non-sensitive)
+  VITE_DEBUG_MODE: "false"  # Can be overridden in deployment
+  VITE_LOG_LEVEL: "info"    # error, warn, info, debug
+  
+  # Security Headers (non-sensitive)
+  SECURITY_HEADERS_ENABLED: "true"
+  CORS_ENABLED: "true"

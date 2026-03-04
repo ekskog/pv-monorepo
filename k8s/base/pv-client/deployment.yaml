@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: photovault-client
-  namespace: photovault
+  name: pv-client
+  namespace: pv
   labels:
-    app: photovault-client
+    app: pv-client
     component: client
 spec:
   replicas: 1
@@ -15,19 +15,19 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      app: photovault-client
+      app: pv-client
   template:
     metadata:
       labels:
-        app: photovault-client
+        app: pv-client
         component: client
       annotations:
         # This annotation will be updated by the CI/CD pipeline to force pod recreation
         deployment.kubernetes.io/revision: "1"
     spec:
       containers:
-      - name: photovault-client
-        image: ghcr.io/ekskog/photovault-client:latest
+      - name: pv-client
+        image: ghcr.io/ekskog/pv-client:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 80
@@ -44,7 +44,7 @@ spec:
         # Load non-sensitive config from ConfigMap
         envFrom:
         - configMapRef:
-            name: photovault-client-config
+            name: pv-client-config
         resources:
           requests:
             memory: "64Mi"

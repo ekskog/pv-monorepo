@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: photovault-api
-  namespace: photovault
+  name: pv-api
+  namespace: pv
   labels:
-    app: photovault-api
+    app: pv-api
 spec:
   replicas: 1
   revisionHistoryLimit: 0 
   selector:
     matchLabels:
-      app: photovault-api
+      app: pv-api
   template:
     metadata:
       labels:
-        app: photovault-api
+        app: pv-api
     spec:
       imagePullSecrets:
       - name: ghcr-secret
@@ -26,17 +26,17 @@ spec:
         hostnames:
         - "ubumac"  
       containers:
-      - name: photovault-api
-        image: ghcr.io/ekskog/photovault-api:latest
+      - name: pv-api
+        image: ghcr.io/ekskog/pv-api:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
           name: http
         envFrom:
         - configMapRef:
-            name: photovault-api-config
+            name: pv-api-config
         - secretRef:
-            name: photovault-api-secret
+            name: pv-api-secret
         volumeMounts:
         - name: log-storage
           mountPath: /app/logs
@@ -70,4 +70,4 @@ spec:
         emptyDir: {}
       - name: nfs-vol
         persistentVolumeClaim:
-          claimName: nfs-photovault-claim # Ensure this PVC exists in 'photovault' namespace
+          claimName: nfs-pv-claim # Ensure this PVC exists in 'pv' namespace

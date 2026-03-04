@@ -1,15 +1,15 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: photovault-api-config
-  namespace: photovault
+  name: pv-api-config
+  namespace: pv
 data:
   PORT: "3000"
   NODE_ENV: "production"
-  DEBUG: "photovault:*,-express:*,-nodemon:*,-express-router:*"
+  DEBUG: "pv:*,-express:*,-nodemon:*,-express-router:*"
   API_PREFIX: "/api/v1"
   # AVIF Converter Services
-  AVIF_CONVERTER_URL: "http://avif-converter-service.photovault.svc.cluster.local:3000"
+  AVIF_CONVERTER_URL: "http://avif-converter-service.pv.svc.cluster.local:3000"
   AVIF_CONVERTER_TIMEOUT: "300000"
 
   # Temporal Configuration

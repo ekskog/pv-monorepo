@@ -1,15 +1,15 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: photovault-api-service
-  namespace: photovault
+  name: pv-api-service
+  namespace: pv
   labels:
-    app: photovault-api
+    app: pv-api
   annotations:
     metallb.universe.tf/loadBalancerIPs: 192.168.1.205
 spec:
   selector:
-    app: photovault-api
+    app: pv-api
   ports:
   - port: 80
     targetPort: 3000

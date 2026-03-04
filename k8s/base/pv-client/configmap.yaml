@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: photovault-client-config
-  namespace: photovault
+  name: pv-client-config
+  namespace: pv
   labels:
-    app: photovault-client
+    app: pv-client
     component: frontend
 data:
   # Non-sensitive configuration values

@@ -14,13 +14,13 @@ jobs:
           - name: pv-client
             path: pv-client
             context: pv-client
-            image: ghcr.io/ekskog/photovault-client
-            deployment: photovault-client
+            image: ghcr.io/ekskog/pv-client
+            deployment: pv-client
           - name: pv-api
             path: pv-api
             context: pv-api
-            image: ghcr.io/ekskog/photovault-api
-            deployment: photovault-api
+            image: ghcr.io/ekskog/pv-api
+            deployment: pv-api
           - name: pv-converter
             path: pv-converter
             context: pv-converter
@@ -107,7 +107,7 @@ jobs:
             --docker-server=ghcr.io \
             --docker-username=${{ github.actor }} \
             --docker-password="${{ secrets.EK_GITHUB_PAT }}" \
-            --namespace=photovault \
+            --namespace=pv \
             --kubeconfig=kubeconfig.yaml \
             --dry-run=client -o yaml | kubectl apply -f - --kubeconfig=kubeconfig.yaml
 
@@ -121,15 +121,15 @@ jobs:
           IMAGE=${{ matrix.image }}:${{ env.SHORT_SHA }}
           echo "Updating deployment ${{ matrix.deployment }} to $IMAGE"
           kubectl set image deployment/${{ matrix.deployment }} \
-            ${{ matrix.deployment }}=$IMAGE --namespace=photovault --kubeconfig=kubeconfig.yaml || true
+            ${{ matrix.deployment }}=$IMAGE --namespace=pv --kubeconfig=kubeconfig.yaml || true
 
           # Prefer consolidated manifests in k8s/base/<service>/, fall back to package-local k8s/
           if [ -d "k8s/base/${{ matrix.name }}" ]; then
             echo "Applying consolidated manifests: k8s/base/${{ matrix.name }}"
-            kubectl apply -f k8s/base/${{ matrix.name }} --kubeconfig=kubeconfig.yaml --namespace=photovault || true
+            kubectl apply -f k8s/base/${{ matrix.name }} --kubeconfig=kubeconfig.yaml --namespace=pv || true
           elif [ -d "${{ matrix.path }}/k8s" ]; then
             echo "Applying package manifests: ${{ matrix.path }}/k8s"
-            kubectl apply -f ${{ matrix.path }}/k8s --kubeconfig=kubeconfig.yaml --namespace=photovault || true
+            kubectl apply -f ${{ matrix.path }}/k8s --kubeconfig=kubeconfig.yaml --namespace=pv || true
           else
             echo "No manifests found for ${{ matrix.name }}; skipping kubectl apply"
           fi
@@ -141,7 +141,7 @@ jobs:
             echo "No kubeconfig; skip rollout wait"
             exit 0
           fi
-          kubectl rollout status deployment/${{ matrix.deployment }} --namespace=photovault --kubeconfig=kubeconfig.yaml --timeout=300s || true
+          kubectl rollout status deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml --timeout=300s || true
 
       - name: Cleanup
         if: always()

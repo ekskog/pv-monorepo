@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pv-worker
-  namespace: photovault
+  namespace: pv
   labels:
     app: pv-worker
 spec:
@@ -29,7 +29,7 @@ spec:
         - name: TASK_QUEUE
           value: "image-processing"
         - name: AVIF_CONVERTER_URL
-          value: "http://avif-converter-service.photovault.svc.cluster.local:3000"
+          value: "http://avif-converter-service.pv.svc.cluster.local:3000"
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfs-storage
@@ -43,4 +43,4 @@ spec:
       volumes:
       - name: nfs-storage
         persistentVolumeClaim:
-          claimName: nfs-photovault-claim
+          claimName: nfs-pv-claim

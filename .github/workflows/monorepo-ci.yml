@@ -4,6 +4,20 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Service to rebuild/deploy
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - pv-client
+          - pv-api
+          - pv-converter
+          - pv-temporal-worker
+          - pv-uploader
 
 jobs:
   build-and-deploy:
@@ -40,13 +54,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history avoids false negatives in git diff on runners.
+          fetch-depth: 0
 
       - name: Determine if service changed
         id: changed
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REQUESTED_SERVICE="${{ github.event.inputs.service }}"
+            if [ "$REQUESTED_SERVICE" = "all" ] || [ "$REQUESTED_SERVICE" = "${{ matrix.name }}" ]; then
+              echo "files_changed=workflow_dispatch:$REQUESTED_SERVICE" >> $GITHUB_OUTPUT
+              echo "changed=true" >> $GITHUB_OUTPUT
+            else
+              echo "files_changed=workflow_dispatch:$REQUESTED_SERVICE" >> $GITHUB_OUTPUT
+              echo "changed=false" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
+
           echo "Checking for changes under '${{ matrix.path }}'"
-          git fetch --no-tags --prune --depth=1 origin ${{ github.ref }} || true
-          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} || true)
+          CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null || git show --pretty='' --name-only "${{ github.sha }}" || true)
           echo "files_changed<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT

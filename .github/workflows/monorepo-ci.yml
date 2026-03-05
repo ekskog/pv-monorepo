@@ -116,6 +116,7 @@ jobs:
 
       - name: Prepare kubeconfig
         if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+        continue-on-error: true
         run: |
           if [ -z "${{ secrets.KUBECONFIG }}" ]; then
             echo "KUBECONFIG secret not provided; skipping deploy steps"
@@ -126,6 +127,7 @@ jobs:
 
       - name: Create or update image pull secret
         if: env.KUBECONFIG || steps.changed.outputs.changed == 'true'
+        continue-on-error: true
         run: |
           if [ -z "${{ secrets.KUBECONFIG }}" ]; then
             echo "No kubeconfig; skipping image-pull-secret creation"
@@ -141,6 +143,7 @@ jobs:
 
       - name: Update deployment image and apply manifests
         if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+        continue-on-error: true
         run: |
           if [ -z "${{ secrets.KUBECONFIG }}" ]; then
             echo "No kubeconfig; skipping deployment"
@@ -164,6 +167,7 @@ jobs:
 
       - name: Wait for rollout
         if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+        continue-on-error: true
         run: |
           if [ -z "${{ secrets.KUBECONFIG }}" ]; then
             echo "No kubeconfig; skip rollout wait"

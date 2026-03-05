@@ -6,8 +6,8 @@ const minioClient = new Minio.Client({
   endPoint: 'mjolnir', 
   port: 9000,
   useSSL: false,
-  accessKey: process.env.MINIO_ACCESS_KEY || 'lucarv',
-  secretKey: process.env.MINIO_SECRET_KEY || 'lucaPWD4MinI0-MJR',
+  accessKey: process.env.MINIO_ACCESS_KEY || 'REDACTED',
+  secretKey: process.env.MINIO_SECRET_KEY || 'REDACTED',
 });
 
 const DEFAULT_BUCKET = 'slask';

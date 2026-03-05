@@ -34,8 +34,8 @@ const config = {
     endpoint: process.env.MINIO_ENDPOINT || 'mjolnir',
     port: parseInt(process.env.MINIO_PORT) || 9000,
     useSSL: process.env.MINIO_USE_SSL === "true",
-    accessKey: process.env.MINIO_ACCESS_KEY || 'lucarv',
-    secretKey: process.env.MINIO_SECRET_KEY || 'lucaPWD4MinI0-MJR',
+    accessKey: process.env.MINIO_ACCESS_KEY,
+    secretKey: process.env.MINIO_SECRET_KEY,
     bucketName: process.env.MINIO_BUCKET_NAME || 'pv',
   },
 

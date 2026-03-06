@@ -1,4 +1,4 @@
-const AvifConverterService = require("./pv-avif-converter-service");
+const AvifConverterService = require("./avif-converter-service");
 const MetadataService = require("./metadata-service");
 const debug = require("debug");
 const debugUpload = debug("pv:upload-service");
@@ -53,7 +53,7 @@ class UploadService {
         if (uploadResult && extractedMetadata) {
           this.updateJsonMetadataAsync(bucketName, uploadResult, extractedMetadata, originalname)
             .then(() => {
-             // debugUpload(`[upload-service.js (52)]: Updated JSON metadata for ${originalname}`
+              // debugUpload(`[upload-service.js (52)]: Updated JSON metadata for ${originalname}`
             })
             .catch((err) => {
               //debugUpload(`[(55)]: Failed to update JSON metadata for ${originalname}: ${err.message}`);
@@ -89,6 +89,10 @@ class UploadService {
         file.originalname,
         file.mimetype
       );
+
+      if (!conversionResult.success) {
+        throw new Error(`Conversion failed: ${conversionResult.error || 'Unknown error'}`);
+      }
 
       const convertedFile = this._processConvertedFileFromMicroservice(conversionResult.data.files);
 

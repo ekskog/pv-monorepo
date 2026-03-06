@@ -30,8 +30,8 @@ const getAlbums = (minioClient) => async (req, res) => {
     const albumMetadata = await Promise.all(
       albums.map(async (album) => {
         const fileCount =
-          //(await countObjectsInPath(minioClient, "pv", album.path)) - 1;
-          (await countObjectsInPath(minioClient, "pv", album.name + "/")) - 1;
+          //(await countObjectsInPath(minioClient, config.minio.bucketName, album.path)) - 1;
+          (await countObjectsInPath(minioClient, config.minio.bucketName, album.name + "/")) - 1;
 
         return {
           ...album, // keep name, slug, path, description, etc.
@@ -76,7 +76,7 @@ const createAlbum = (minioClient) => async (req, res) => {
 
     const existingObjects = [];
     const stream = minioClient.listObjectsV2(
-      process.env.MINIO_BUCKET_NAME,
+      config.minio.bucketName,
       normalizedPath,
       false
     );
@@ -549,7 +549,7 @@ const renameAlbum = (minioClient) => async (req, res) => {
     // Check if new path already exists in MinIO
     const existingObjects = [];
     const stream = minioClient.listObjectsV2(
-      process.env.MINIO_BUCKET_NAME,
+      config.minio.bucketName,
       newNormalizedPath,
       false
     );

@@ -38,12 +38,12 @@ jobs:
           - name: pv-converter
             path: pv-converter
             context: pv-converter
-            image: ghcr.io/ekskog/avif-converter
-            deployment: avif-converter
+            image: ghcr.io/ekskog/pv-converter
+            deployment: pv-converter
           - name: pv-temporal-worker
             path: pv-temporal-worker
             context: pv-temporal-worker/worker
-            image: ghcr.io/ekskog/pv-worker
+            image: ghcr.io/ekskog/pv-temporal-worker
             deployment: pv-worker
           - name: pv-uploader
             path: pv-uploader

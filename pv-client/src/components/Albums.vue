@@ -251,7 +251,7 @@ const canRenameAlbum = computed(() => {
 })
 
 // Constants
-const BUCKET_NAME = 'pv'
+const BUCKET_NAME = 'photovault'
 
 // Methods
 const loadAlbums = async () => {

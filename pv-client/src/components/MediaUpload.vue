@@ -174,7 +174,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'jobReady'])
 
 // Constants
-const BUCKET_NAME = 'pv'
+const BUCKET_NAME = 'photovault'
 
 // Reactive state
 const uploadType = ref('photos')

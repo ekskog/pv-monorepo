@@ -10,7 +10,7 @@ const minioClient = new Minio.Client({
   secretKey: process.env.MINIO_SECRET_KEY || 'REDACTED',
 });
 
-const DEFAULT_BUCKET = 'slask';
+const DEFAULT_BUCKET = process.env.MINIO_BUCKET_NAME || 'photovault';
 
 /**
  * Moves the converted file from the NFS scratchpad to MinIO storage.

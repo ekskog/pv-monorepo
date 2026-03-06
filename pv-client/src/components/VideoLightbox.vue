@@ -133,7 +133,7 @@ const props = defineProps({
   canDelete: Boolean,
   bucketName: {
     type: String,
-    default: 'pv'
+    default: 'photovault'
   },
   albumName: {
     type: String,

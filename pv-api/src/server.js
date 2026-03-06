@@ -155,17 +155,17 @@ async function processFilesInBackground(
 
     for (let i = 0; i < totalFiles; i++) {
       const file = files[i];
-      debugUpload(`[server.js (132)] Processing file ${i + 1}/${totalFiles}: ${file.originalname}`);
-
+      console.log(`[SERVER] Processing file ${i + 1}/${totalFiles}: ${file.originalname}`);
       try {
         // Process the individual file
         const result = await uploadService.processAndUploadFile(
           file,
           bucketName,
-          folderPath
+          folderPath,
+          file.originalname
         );
         uploadResults.push(result);
-        debugUpload(`[server.js (142)] Successfully processed: ${file.originalname}`);
+        console.log(`[SERVER] Successfully processed: ${file.originalname}`);
 
         // Send progress update after each successful file upload
         const progressPercent = Math.round(((i + 1) / totalFiles) * 100);
@@ -352,7 +352,7 @@ async function startServer() {
     await initTemporal();
 
     app.use("/bulk", temporalRoutes(temporalClient, config));
-    app.use("/", healthRoutes(minioClient, temporalClient));    
+    app.use("/", healthRoutes(minioClient, temporalClient));
 
     //debugServer(`[server.js] Database initialized successfully`);
     // Start HTTP server
@@ -360,8 +360,8 @@ async function startServer() {
       const k8sService = config.kubernetes.serviceName;
       const k8sNamespace = config.kubernetes.namespace || "pv";
       debugServer(`Starting PhotoVault ${new Date()}...`);
-      debugServer(        `> PhotoVault API server running on port ${config.server.port}`      );
-      
+      debugServer(`> PhotoVault API server running on port ${config.server.port}`);
+
     });
   } catch (error) {
     //debugServer(`[server.js] Failed to start server:`, error.message);
@@ -389,7 +389,7 @@ async function initializeDatabase() {
   try {
     await database.initialize();
   } catch (error) {
-    debugDB(`[(262)] Database initialization failed:`, error.message);  
+    debugDB(`[(262)] Database initialization failed:`, error.message);
   }
 }
 

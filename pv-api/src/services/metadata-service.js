@@ -22,8 +22,9 @@ class MetadataService {
    * @returns {Object} Extracted metadata
    */
   async extractEssentialMetadata(buffer, filename) {
+    console.log(`[METADATA-SERVICE] >>> Starting metadata extraction for: ${filename} (Buffer size: ${buffer.length} bytes)`);
     try {
-      //debugMetadata(`[(25)] > Extracting metadata from: ${filename}`);
+      //debugMetadata(`[(26)] > Extracting metadata from: ${filename}`);
 
       // Extract comprehensive metadata in one pass
       let exifData;
@@ -73,19 +74,23 @@ class MetadataService {
       };
 
       try {
+        console.log(`[METADATA-SERVICE] Attempting exifr.parse for ${filename}`);
         exifData = await exifr.parse(buffer, exifrOptions);
+        console.log(`[METADATA-SERVICE] exifr.parse succeeded for ${filename}`);
       } catch (exifrError) {
-        debugMetadata(`[metadata-service.js] exifr failed for ${filename}: ${exifrError.message}. Trying sharp fallback...`);
+        console.log(`[METADATA-SERVICE] ! exifr failed for ${filename}: ${exifrError.message}. Trying sharp fallback...`);
         try {
           // Fallback to sharp to extract raw EXIF buffer
+          console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] Reading metadata with sharp for ${filename}`);
           const sharpMeta = await sharp(buffer).metadata();
           if (sharpMeta.exif) {
+            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] Found EXIF block with sharp. Parsing with exifr...`);
             // Parse the raw EXIF buffer from sharp
             exifData = await exifr.parse(sharpMeta.exif, exifrOptions);
-            debugMetadata(`[metadata-service.js] sharp fallback succeeded for ${filename}`);
+            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] exifr parse of sharp's EXIF buffer succeeded for ${filename}`);
           } else {
             // If no exif block, at least try using sharp's basic width/height
-            debugMetadata(`[metadata-service.js] No EXIF block found by sharp for ${filename}`);
+            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] No EXIF block found by sharp. Using basic dimensions.`);
             exifData = {
               ImageWidth: sharpMeta.width,
               ImageHeight: sharpMeta.height,
@@ -94,11 +99,12 @@ class MetadataService {
             };
           }
         } catch (sharpError) {
-          debugMetadata(`[metadata-service.js] sharp fallback also failed for ${filename}: ${sharpError.message}`);
+          console.error(`[METADATA-SERVICE] [SHARP-FALLBACK] !!! Fallback failed for ${filename}:`, sharpError.message);
           throw exifrError; // Throw original error if fallback also fails
         }
       }
 
+      console.log(`[METADATA-SERVICE] Building metadata object for ${filename}`);
       const metadata = {
         sourceImage: filename,
         timestamp: "not found",

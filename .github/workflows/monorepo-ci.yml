@@ -70,6 +70,7 @@ jobs:
               echo "files_changed=workflow_dispatch:$REQUESTED_SERVICE" >> $GITHUB_OUTPUT
               echo "changed=false" >> $GITHUB_OUTPUT
             fi
+            echo "manifests_changed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -82,6 +83,14 @@ jobs:
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check for manifest changes related to this specific service
+          if echo "$CHANGED_FILES" | grep -E "^k8s/base/${{ matrix.name }}(/|$)" >/dev/null || \
+             echo "$CHANGED_FILES" | grep -E "^${{ matrix.path }}/k8s(/|$)" >/dev/null; then
+            echo "manifests_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "manifests_changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set short SHA
@@ -113,9 +122,11 @@ jobs:
           tags: |
             ${{ matrix.image }}:${{ env.SHORT_SHA }}
             ${{ matrix.image }}:latest
+          build-args: |
+            VITE_TURNSTILE_SITE_KEY=${{ secrets.VITE_TURNSTILE_SITE_KEY }}
 
       - name: Prepare kubeconfig
-        if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+        if: steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true'
         continue-on-error: true
         run: |
           if [ -z "${{ secrets.KUBECONFIG }}" ]; then
@@ -126,7 +137,7 @@ jobs:
           echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
 
       - name: Create or update image pull secret
-        if: env.KUBECONFIG || steps.changed.outputs.changed == 'true'
+        if: env.KUBECONFIG && (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true')
         continue-on-error: true
         run: |
           if [ -z "${{ secrets.KUBECONFIG }}" ]; then
@@ -141,12 +152,12 @@ jobs:
             --kubeconfig=kubeconfig.yaml \
             --dry-run=client -o yaml | kubectl apply -f - --kubeconfig=kubeconfig.yaml
 
-      - name: Update deployment image and apply manifests
-        if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+      - name: Update deployment image
+        if: steps.changed.outputs.changed == 'true'
         continue-on-error: true
         run: |
           if [ -z "${{ secrets.KUBECONFIG }}" ]; then
-            echo "No kubeconfig; skipping deployment"
+            echo "No kubeconfig; skipping image update"
             exit 0
           fi
           IMAGE=${{ matrix.image }}:${{ env.SHORT_SHA }}
@@ -154,6 +165,15 @@ jobs:
           kubectl set image deployment/${{ matrix.deployment }} \
             ${{ matrix.deployment }}=$IMAGE --namespace=pv --kubeconfig=kubeconfig.yaml || true
 
+      - name: Apply manifests
+        if: steps.changed.outputs.manifests_changed == 'true'
+        continue-on-error: true
+        run: |
+          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
+            echo "No kubeconfig; skipping manifest application"
+            exit 0
+          fi
+          
           # Prefer consolidated manifests in k8s/base/<service>/, fall back to package-local k8s/
           # Skip secret manifests to avoid overwriting real cluster secrets with repository placeholders.
           if [ -d "k8s/base/${{ matrix.name }}" ]; then
@@ -182,7 +202,7 @@ jobs:
           done
 
       - name: Wait for rollout
-        if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')
+        if: steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true'
         continue-on-error: true
         run: |
           if [ -z "${{ secrets.KUBECONFIG }}" ]; then

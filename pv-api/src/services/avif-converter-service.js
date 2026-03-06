@@ -20,13 +20,13 @@ class AvifConverterService {
         method: 'GET',
         timeout: 60000 // 1 minute timeout for health checks
       });
-      
+
       if (!response.ok) {
         throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
+
       return {
         success: true,
         data: data
@@ -39,28 +39,30 @@ class AvifConverterService {
     }
   }
 
- /**
- * Convert an image file to AVIF using the microservice
- * @param {Buffer} fileBuffer - Image file buffer
- * @param {string} originalName - Original filename
- * @param {string} mimeType - Original file MIME type
- * @param {boolean} returnContents - Whether to return file contents or just paths
- * @returns {Object} Conversion result with AVIF files
- */
-async convertImage(fileBuffer, originalName, mimeType, returnContents = true) {
+  /**
+  * Convert an image file to AVIF using the microservice
+  * @param {Buffer} fileBuffer - Image file buffer
+  * @param {string} originalName - Original filename
+  * @param {string} mimeType - Original file MIME type
+  * @param {boolean} returnContents - Whether to return file contents or just paths
+  * @returns {Object} Conversion result with AVIF files
+  */
+  async convertImage(fileBuffer, originalName, mimeType, returnContents = true) {
+    console.log(`[AVIF-CONVERTER] >>> Starting conversion request for ${originalName} to ${this.converterUrl}`);
     try {
-      //debugConverter(`[(53)] Converting image: ${originalName} (${mimeType})`);
       const endpoint = '/convert';
       const formData = new FormData();
       const blob = new Blob([fileBuffer], { type: mimeType });
       formData.append('image', blob, originalName);
       formData.append('mimeType', mimeType);
 
+      console.log(`[AVIF-CONVERTER] Sending POST to ${this.converterUrl}${endpoint}...`);
       const response = await fetch(`${this.converterUrl}${endpoint}`, {
         method: 'POST',
         body: formData,
         timeout: this.converterTimeout
       });
+      console.log(`[AVIF-CONVERTER] Received ${response.status} from converter for ${originalName}`);
       //debugConverter(`[(65)] Received ${response.status} | ${response.statusText} from converter for ${originalName}`);
       if (!response.ok) {
         const errorText = await response.text();
@@ -108,7 +110,7 @@ async convertImage(fileBuffer, originalName, mimeType, returnContents = true) {
       converter: health,
       overallStatus: health.success ? 'healthy' : 'degraded'
     };
-    
+
     return result;
   }
 

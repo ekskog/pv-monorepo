@@ -33,35 +33,44 @@ class UploadService {
     let uploadResult = null;
 
     try {
+      console.log(`[UPLOAD-SERVICE] >>> Starting processAndUploadFile for: ${originalname} (${mimetype})`);
       if (mimetype === "video/mp4" || mimetype === "video/mov" || mimetype === "video/avi" || mimetype === "video/quicktime") {
+        console.log(`[UPLOAD-SERVICE] File identified as video: ${originalname}`);
         uploadResult = await this.processVideoFile(file, bucketName, folderPath);
-        debugUpload(`[(38)]: Uploaded video file: ${originalname}`);
+        console.log(`[UPLOAD-SERVICE] Video upload complete for: ${originalname}`);
       } else {
-        if (mimetype !== "image/heic" && mimetype !== "image/jpeg") return null;
-        debugUpload(`[(41)]: Processing image file: ${originalname}`);
+        console.log(`[UPLOAD-SERVICE] File identified as image/heic/jpeg: ${originalname}`);
+        if (mimetype !== "image/heic" && mimetype !== "image/jpeg") {
+          console.log(`[UPLOAD-SERVICE] Unsupported image subtype: ${mimetype} for ${originalname}`);
+          return null;
+        }
 
         // PHOTOS ONLY
         // Step 1: Extract metadata
+        console.log(`[UPLOAD-SERVICE] [IMAGE] Step 1/3: Extracting metadata for ${originalname}`);
         extractedMetadata = await this.metadataService.extractEssentialMetadata(buffer, originalname);
-        //debugUpload(`[(43)]: Extracted metadata for ${originalname}: ${JSON.stringify(extractedMetadata)}`);
+        console.log(`[UPLOAD-SERVICE] [IMAGE] Metadata extracted successfully for ${originalname}`);
 
         // Step 2: Convert and upload image
+        console.log(`[UPLOAD-SERVICE] [IMAGE] Step 2/3: Converting and uploading: ${originalname}`);
         uploadResult = await this.processImageFile(file, bucketName, folderPath, mimetype);
-        //debugUpload(`[(47)]: Uploaded file ${originalname} as ${uploadResult.objectName}`);
+        console.log(`[UPLOAD-SERVICE] [IMAGE] Processing/Upload complete for ${originalname}`);
 
         // Step 3: Try updating JSON metadata (non-blocking)
         if (uploadResult && extractedMetadata) {
+          console.log(`[UPLOAD-SERVICE] [IMAGE] Step 3/3: Triggering async JSON metadata update for ${originalname}`);
           this.updateJsonMetadataAsync(bucketName, uploadResult, extractedMetadata, originalname)
             .then(() => {
-              // debugUpload(`[upload-service.js (52)]: Updated JSON metadata for ${originalname}`
+              console.log(`[UPLOAD-SERVICE] [IMAGE] Async JSON metadata update finished for ${originalname}`);
             })
             .catch((err) => {
-              //debugUpload(`[(55)]: Failed to update JSON metadata for ${originalname}: ${err.message}`);
+              console.error(`[UPLOAD-SERVICE] [IMAGE] !!! Failed to update JSON metadata for ${originalname}:`, err.message);
             });
         }
       }
       return uploadResult;
     } catch (error) {
+      console.error(`[UPLOAD-SERVICE] !!! Error processing ${originalname}:`, error.message);
       throw new Error(`Failed processing ${originalname}: ${error.message}`);
     } finally {
       // Release buffer memory
@@ -84,6 +93,7 @@ class UploadService {
    */
   async processImageFile(file, bucketName, folderPath, mimetype) {
     try {
+      console.log(`[UPLOAD-SERVICE] [IMAGE-PROC] Starting conversion request for ${file.originalname}`);
       const conversionResult = await this.avifConverter.convertImage(
         file.buffer,
         file.originalname,
@@ -91,15 +101,18 @@ class UploadService {
       );
 
       if (!conversionResult.success) {
+        console.error(`[UPLOAD-SERVICE] [IMAGE-PROC] Conversion failed for ${file.originalname}:`, conversionResult.error);
         throw new Error(`Conversion failed: ${conversionResult.error || 'Unknown error'}`);
       }
 
+      console.log(`[UPLOAD-SERVICE] [IMAGE-PROC] Conversion success for ${file.originalname}. Processing converted file...`);
       const convertedFile = this._processConvertedFileFromMicroservice(conversionResult.data.files);
 
       const objectName = folderPath
         ? `${folderPath.replace(/\/$/, "")}/${convertedFile.filename}`
         : convertedFile.filename;
 
+      console.log(`[UPLOAD-SERVICE] [IMAGE-PROC] Uploading to MinIO: ${bucketName}/${objectName} (Size: ${convertedFile.size} bytes)`);
       const uploadInfo = await this.minioClient.putObject(
         bucketName,
         objectName,
@@ -113,6 +126,8 @@ class UploadService {
         }
       );
 
+      console.log(`[UPLOAD-SERVICE] [IMAGE-PROC] MinIO upload complete for ${file.originalname}. ETag: ${uploadInfo.etag}`);
+
       return {
         originalName: file.originalname,
         objectName,
@@ -122,6 +137,7 @@ class UploadService {
         versionId: uploadInfo.versionId,
       };
     } catch (error) {
+      console.error(`[UPLOAD-SERVICE] [IMAGE-PROC] !!! Error in processImageFile for ${file.originalname}:`, error.message);
       throw error;
     }
   }

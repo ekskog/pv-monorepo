@@ -155,15 +155,31 @@ jobs:
             ${{ matrix.deployment }}=$IMAGE --namespace=pv --kubeconfig=kubeconfig.yaml || true
 
           # Prefer consolidated manifests in k8s/base/<service>/, fall back to package-local k8s/
+          # Skip secret manifests to avoid overwriting real cluster secrets with repository placeholders.
           if [ -d "k8s/base/${{ matrix.name }}" ]; then
-            echo "Applying consolidated manifests: k8s/base/${{ matrix.name }}"
-            kubectl apply -f k8s/base/${{ matrix.name }} --kubeconfig=kubeconfig.yaml --namespace=pv || true
+            MANIFEST_DIR="k8s/base/${{ matrix.name }}"
+            echo "Applying consolidated manifests from: $MANIFEST_DIR"
           elif [ -d "${{ matrix.path }}/k8s" ]; then
-            echo "Applying package manifests: ${{ matrix.path }}/k8s"
-            kubectl apply -f ${{ matrix.path }}/k8s --kubeconfig=kubeconfig.yaml --namespace=pv || true
+            MANIFEST_DIR="${{ matrix.path }}/k8s"
+            echo "Applying package manifests from: $MANIFEST_DIR"
           else
             echo "No manifests found for ${{ matrix.name }}; skipping kubectl apply"
+            exit 0
           fi
+
+          for manifest in "$MANIFEST_DIR"/*.yaml; do
+            [ -e "$manifest" ] || continue
+            filename=$(basename "$manifest")
+            case "$filename" in
+              *secret*.yaml|secrets.yaml)
+                echo "Skipping secret manifest: $manifest"
+                ;;
+              *)
+                echo "Applying manifest: $manifest"
+                kubectl apply -f "$manifest" --kubeconfig=kubeconfig.yaml --namespace=pv || true
+                ;;
+            esac
+          done
 
       - name: Wait for rollout
         if: steps.changed.outputs.changed == 'true' || contains(steps.changed.outputs.files_changed, 'k8s/')

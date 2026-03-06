@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: avif-converter
+  name: pv-avif-converter
   namespace: pv
   labels:
-    app: avif-converter
+    app: pv-avif-converter
 spec:
   replicas: 3
   revisionHistoryLimit: 1
   selector:
     matchLabels:
-      app: avif-converter
+      app: pv-avif-converter
   template:
     metadata:
       labels:
-        app: avif-converter
+        app: pv-avif-converter
     spec:
       containers:
-      - name: avif-converter
-        image: ghcr.io/ekskog/avif-converter:latest
+      - name: pv-avif-converter
+        image: ghcr.io/ekskog/pv-avif-converter:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 3000

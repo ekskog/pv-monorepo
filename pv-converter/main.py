@@ -72,7 +72,7 @@ async def health_check():
 
     return {
         "status": "healthy" if avifenc_available else "unhealthy",
-        "service": "avif-converter",
+        "service": "pv-avif-converter",
         "memory": memory,
         "capabilities": {
             "avifenc": avifenc_available

@@ -1,4 +1,4 @@
-const AvifConverterService = require("./avif-converter-service");
+const AvifConverterService = require("./pv-avif-converter-service");
 const MetadataService = require("./metadata-service");
 const debug = require("debug");
 const debugUpload = debug("pv:upload-service");
@@ -105,7 +105,7 @@ class UploadService {
           "Content-Type": convertedFile.mimetype,
           "X-Amz-Meta-Original-Name": file.originalname,
           "X-Amz-Meta-Upload-Date": new Date().toISOString(),
-          "X-Amz-Meta-Converted-By": "avif-converter-microservice",
+          "X-Amz-Meta-Converted-By": "pv-avif-converter-microservice",
         }
       );
 

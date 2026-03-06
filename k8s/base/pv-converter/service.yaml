@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: avif-converter-service
+  name: pv-avif-converter-service
   namespace: pv
   labels:
-    app: avif-converter
+    app: pv-avif-converter
 spec:
   selector:
-    app: avif-converter
+    app: pv-avif-converter
   ports:
   - port: 3000
     targetPort: 3000

@@ -42,7 +42,7 @@ interface ConverterResponse {
 }
 
 const AVIF_CONVERTER_URL = process.env.AVIF_CONVERTER_URL ||
-  'http://avif-converter-service.pv.svc.cluster.local:3000';
+  'http://pv-avif-converter-service.pv.svc.cluster.local:3000';
 
 export async function convertImage(image: ImageFile): Promise<ConversionResult> {
   console.log(`[Activity] ===== Starting conversion =====`);

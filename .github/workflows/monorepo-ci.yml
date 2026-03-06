@@ -124,6 +124,7 @@ jobs:
             ${{ matrix.image }}:latest
           build-args: |
             VITE_TURNSTILE_SITE_KEY=${{ secrets.VITE_TURNSTILE_SITE_KEY }}
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
 
       - name: Prepare kubeconfig
         if: steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true'

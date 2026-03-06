@@ -1,4 +1,5 @@
 const exifr = require("exifr");
+const sharp = require("sharp");
 const debug = require("debug");
 const debugMetadata = debug("pv:metadata");
 const debugGps = debug("pv:metadata:gps");
@@ -25,7 +26,9 @@ class MetadataService {
       //debugMetadata(`[(25)] > Extracting metadata from: ${filename}`);
 
       // Extract comprehensive metadata in one pass
-      const exifData = await exifr.parse(buffer, {
+      let exifData;
+      const exifrOptions = {
+        heic: true,
         gps: true,
         pick: [
           // Date/time
@@ -64,8 +67,37 @@ class MetadataService {
           "ColorSpace",
           "XResolution",
           "YResolution",
+          "PixelXDimension",
+          "PixelYDimension",
         ],
-      });
+      };
+
+      try {
+        exifData = await exifr.parse(buffer, exifrOptions);
+      } catch (exifrError) {
+        debugMetadata(`[metadata-service.js] exifr failed for ${filename}: ${exifrError.message}. Trying sharp fallback...`);
+        try {
+          // Fallback to sharp to extract raw EXIF buffer
+          const sharpMeta = await sharp(buffer).metadata();
+          if (sharpMeta.exif) {
+            // Parse the raw EXIF buffer from sharp
+            exifData = await exifr.parse(sharpMeta.exif, exifrOptions);
+            debugMetadata(`[metadata-service.js] sharp fallback succeeded for ${filename}`);
+          } else {
+            // If no exif block, at least try using sharp's basic width/height
+            debugMetadata(`[metadata-service.js] No EXIF block found by sharp for ${filename}`);
+            exifData = {
+              ImageWidth: sharpMeta.width,
+              ImageHeight: sharpMeta.height,
+              Orientation: sharpMeta.orientation,
+              ColorSpace: sharpMeta.space,
+            };
+          }
+        } catch (sharpError) {
+          debugMetadata(`[metadata-service.js] sharp fallback also failed for ${filename}: ${sharpError.message}`);
+          throw exifrError; // Throw original error if fallback also fails
+        }
+      }
 
       const metadata = {
         sourceImage: filename,
@@ -177,9 +209,9 @@ class MetadataService {
 
         // Extract dimensions
         metadata.dimensions.width =
-          exifData.ImageWidth || exifData.ExifImageWidth || "not found";
+          exifData.ImageWidth || exifData.ExifImageWidth || exifData.PixelXDimension || "not found";
         metadata.dimensions.height =
-          exifData.ImageHeight || exifData.ExifImageHeight || "not found";
+          exifData.ImageHeight || exifData.ExifImageHeight || exifData.PixelYDimension || "not found";
         metadata.dimensions.orientation = exifData.Orientation || "not found";
         metadata.dimensions.colorSpace = exifData.ColorSpace || "not found";
         metadata.dimensions.resolution.x = exifData.XResolution || "not found";
@@ -188,41 +220,18 @@ class MetadataService {
 
       return metadata;
     } catch (error) {
-      console.error(`Error extracting metadata from ${filename}:`,  error.message);
-    }
-  
-
+      console.error(`Error extracting metadata from ${filename}:`, error.message);
       return {
         sourceImage: filename,
         timestamp: "not found",
         coordinates: "not found",
         location: "not found",
-        camera: {
-          make: "not found",
-          model: "not found",
-          software: "not found",
-          lens: "not found",
-        },
-        settings: {
-          iso: "not found",
-          aperture: "not found",
-          shutterSpeed: "not found",
-          focalLength: "not found",
-          flash: "not found",
-          whiteBalance: "not found",
-        },
-        dimensions: {
-          width: "not found",
-          height: "not found",
-          orientation: "not found",
-          colorSpace: "not found",
-          resolution: {
-            x: "not found",
-            y: "not found",
-          },
-        },
+        camera: { make: "not found", model: "not found", software: "not found", lens: "not found" },
+        settings: { iso: "not found", aperture: "not found", shutterSpeed: "not found", focalLength: "not found", flash: "not found", whiteBalance: "not found" },
+        dimensions: { width: "not found", height: "not found", orientation: "not found", colorSpace: "not found", resolution: { x: "not found", y: "not found" } },
       };
     }
+  }
 
   /**
    * Convert DMS (degrees, minutes, seconds) to decimal degrees

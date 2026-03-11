@@ -10,9 +10,14 @@ const USER_DATA_KEY = "hbvu_user_data";
 const getConfig = () => ({
   apiUrl: configService.getApiUrl(),
   authMode: "api",
-  authEndpoint: "/auth/login",
-  userEndpoint: "/auth/user",
-  statusEndpoint: "/auth/status",
+  // Prefer explicit VITE_* endpoints (set via ConfigMap/Secrets),
+  // fall back to the documented API prefix `/api` if missing.
+  authEndpoint:
+    configService.get("VITE_AUTH_ENDPOINT") || import.meta.env.VITE_AUTH_ENDPOINT || "/auth/login",
+  userEndpoint:
+    configService.get("VITE_USER_ENDPOINT") || import.meta.env.VITE_USER_ENDPOINT || "/user",
+  statusEndpoint:
+    configService.get("VITE_STATUS_ENDPOINT") || import.meta.env.VITE_STATUS_ENDPOINT || "/auth/status",
 });
 
 // API authentication function (production) - UPDATED to include Turnstile

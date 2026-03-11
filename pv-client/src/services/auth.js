@@ -89,12 +89,31 @@ async function validateToken(token) {
 class AuthService {
   constructor() {
     this.currentUser = null;
-    this.token = localStorage.getItem(AUTH_TOKEN_KEY);
+    // Use configService as the single source of truth for the auth token
+    this.token = null
+    try {
+      this.token = configService.getAuthToken()
+    } catch (e) {
+      // fallback to localStorage for older environments
+      try {
+        this.token = localStorage.getItem(AUTH_TOKEN_KEY)
+      } catch (e2) {
+        this.token = null
+      }
+    }
     this.isInitialized = false;
     this.isValidating = false; // Prevent concurrent validations
 
     // Set up API service reference after import
     this.setupApiService();
+    // Keep configService in sync with existing token
+    if (this.token) {
+      try {
+        configService.setAuthToken(this.token)
+      } catch (e) {
+        // noop - safeguard for environments without localStorage
+      }
+    }
   }
 
   // Set up API service reference to avoid circular import issues
@@ -194,6 +213,12 @@ class AuthService {
 
       localStorage.setItem(AUTH_TOKEN_KEY, this.token);
       localStorage.setItem(USER_DATA_KEY, JSON.stringify(this.currentUser));
+      // Sync token to configService so other modules read a single source
+      try {
+        configService.setAuthToken(this.token)
+      } catch (e) {
+        // ignore in non-browser envs
+      }
 
       return { success: true, user: this.currentUser };
     } catch (error) {
@@ -234,6 +259,11 @@ class AuthService {
     this.currentUser = null;
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(USER_DATA_KEY);
+    try {
+      configService.clearAuthToken()
+    } catch (e) {
+      // ignore
+    }
   }
 
   // Permission system

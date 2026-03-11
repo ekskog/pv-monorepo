@@ -32,11 +32,19 @@ spec:
         ports:
         - containerPort: 3000
           name: http
+        # Explicit mapping for Cloudflare token (server-side only)
+        env:
+        - name: CLOUDFLARE_API_TOKEN
+          valueFrom:
+          secretKeyRef:
+            name: pv-api-secret
+            key: CLOUDFLARE_API_TOKEN
+        # Load remaining config and secrets
         envFrom:
         - configMapRef:
-            name: pv-api-config
+          name: pv-api-config
         - secretRef:
-            name: pv-api-secret
+          name: pv-api-secret
         volumeMounts:
         - name: log-storage
           mountPath: /app/logs

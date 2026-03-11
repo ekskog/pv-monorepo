@@ -46,10 +46,16 @@ COPY --from=build-stage /app/dist /usr/share/nginx/html
 # Copy custom nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Create a simple startup script
+# Create a startup script that performs runtime environment variable substitution
 RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
-    echo 'echo "Starting HBVU PHOTOS Frontend..."' >> /docker-entrypoint.sh && \
-    echo 'nginx -g "daemon off;"' >> /docker-entrypoint.sh
+    echo 'echo "Starting EKSKOG PHOTOS Frontend with runtime env injection..."' >> /docker-entrypoint.sh && \
+    echo 'set -e' >> /docker-entrypoint.sh && \
+    echo '# List of variables to substitute (add others as needed)' >> /docker-entrypoint.sh && \
+    echo 'VARS="\$VITE_API_URL \$VITE_AUTH_ENDPOINT \$VITE_USER_ENDPOINT \$VITE_JWT_SECRET \$VITE_SESSION_TIMEOUT \$VITE_API_TIMEOUT"' >> /docker-entrypoint.sh && \
+    echo 'echo "Injecting runtime variables: $VARS"' >> /docker-entrypoint.sh && \
+    echo 'find /usr/share/nginx/html -type f -name "*.js" -exec sh -c "envsubst \"$VARS\" < {} > {}.tmp && mv {}.tmp {}" \;' >> /docker-entrypoint.sh && \
+    echo 'echo "Starting Nginx..."' >> /docker-entrypoint.sh && \
+    echo 'exec nginx -g "daemon off;"' >> /docker-entrypoint.sh
 
 RUN chmod +x /docker-entrypoint.sh
 

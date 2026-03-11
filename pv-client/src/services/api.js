@@ -26,7 +26,8 @@ class ApiService {
 
   // Get authentication token
   getAuthToken() {
-    return localStorage.getItem("hbvu_auth_token");
+    // Delegate to ConfigService so token source is centralized
+    return configService.getAuthToken();
   }
 
 async request(endpoint, options = {}) {

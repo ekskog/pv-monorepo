@@ -27,7 +27,7 @@ data:
   VITE_LAZY_LOADING: "true"
   
   # Debug Configuration (non-sensitive)
-  VITE_DEBUG_MODE: "false"  # Can be overridden in deployment
+  VITE_DEBUG_MODE: "true"  # Can be overridden in deployment
   VITE_LOG_LEVEL: "info"    # error, warn, info, debug
   
   # Security Headers (non-sensitive)

@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pv-client-config
+  name: pv-spa-config
   namespace: pv
   labels:
-    app: pv-client
+    app: pv-spa
     component: frontend
 data:
   # Non-sensitive configuration values
@@ -27,7 +27,7 @@ data:
   VITE_LAZY_LOADING: "true"
   
   # Debug Configuration (non-sensitive)
-  VITE_DEBUG_MODE: "true"  # Can be overridden in deployment
+  VITE_DEBUG_MODE: "false"  # Can be overridden in deployment
   VITE_LOG_LEVEL: "info"    # error, warn, info, debug
   
   # Security Headers (non-sensitive)

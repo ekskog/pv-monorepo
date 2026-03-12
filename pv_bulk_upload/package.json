@@ -1,7 +1,7 @@
 {
   "name": "pv-bulk-upload",
   "version": "1.0.0",
-  "description": "Bulk photo upload tool for PhotoVault API",
+  "description": "Bulk photo upload tool for pv API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -12,7 +12,7 @@
     "bulk-upload",
     "photos"
   ],
-  "author": "PhotoVault Team",
+  "author": "pv Team",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.6.0",

@@ -95,7 +95,7 @@ function findPhotoFiles(dirPath) {
 // Authenticate and get token
 async function getAuthToken() {
     try {
-        logInfo('Authenticating with PhotoVault API...');
+        logInfo('Authenticating with pv API...');
 
         const response = await axios.post(`${API_BASE_URL}/auth/login`, {
             username: USERNAME,
@@ -346,7 +346,7 @@ function monitorProgress(token, jobId, expectedFiles) {
 // Main function
 async function main() {
     try {
-        logInfo('PhotoVault Bulk Upload Tool');
+        logInfo('pv Bulk Upload Tool');
         logInfo(`Server: ${API_BASE_URL}`);
         logInfo(`Bucket: ${BUCKET_NAME}`);
         logInfo(`HERE Username: ${USERNAME}`);

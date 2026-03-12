@@ -359,8 +359,8 @@ async function startServer() {
     app.listen(PORT, () => {
       const k8sService = config.kubernetes.serviceName;
       const k8sNamespace = config.kubernetes.namespace || "pv";
-      debugServer(`Starting PhotoVault ${new Date()}...`);
-      debugServer(`> PhotoVault API server running on port ${config.server.port}`);
+      debugServer(`Starting pv ${new Date()}...`);
+      debugServer(`> pv API server running on port ${config.server.port}`);
 
     });
   } catch (error) {

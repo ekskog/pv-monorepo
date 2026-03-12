@@ -64,5 +64,5 @@ app.post('/upload', upload.array('images'), async (req, res) => {
 
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
-  console.log(`Photovault uploader running on http://localhost:${PORT}`);
+  console.log(`pv uploader running on http://localhost:${PORT}`);
 });

@@ -1,4 +1,4 @@
-# PhotoVault API - Development Setup
+# pv API - Development Setup
 
 ## Quick Start for Local Development
 

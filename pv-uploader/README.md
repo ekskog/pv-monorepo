@@ -1,4 +1,4 @@
-# Photovault Uploader
+# pv Uploader
 
 A simple web interface for uploading images to your pv server.
 

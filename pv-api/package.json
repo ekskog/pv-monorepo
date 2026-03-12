@@ -1,7 +1,7 @@
 {
   "name": "pv-api",
   "version": "1.0.0",
-  "description": "PhotoVault API - Backend for photo gallery with MinIO storage",
+  "description": "pv API - Backend for photo gallery with MinIO storage",
   "main": "src/server.js",
   "scripts": {
     "start": "node --trace-warnings src/server.js",
@@ -15,7 +15,7 @@
     "s3",
     "api"
   ],
-  "author": "PhotoVault Team",
+  "author": "pv Team",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {

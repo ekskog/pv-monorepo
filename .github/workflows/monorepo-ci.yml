@@ -13,7 +13,7 @@ on:
         type: choice
         options:
           - all
-          - pv-client
+          - pv-spa
           - pv-api
           - pv-converter
           - pv-temporal-worker
@@ -25,11 +25,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: pv-client
-            path: pv-client
-            context: pv-client
-            image: ghcr.io/ekskog/pv-client
-            deployment: pv-client
+          - name: pv-spa
+            path: pv-spa
+            context: pv-spa
+            image: ghcr.io/ekskog/pv-spa
+            deployment: pv-spa
           - name: pv-api
             path: pv-api
             context: pv-api

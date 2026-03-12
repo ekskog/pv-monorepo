@@ -2,7 +2,7 @@ This folder is intended to become the consolidated Kubernetes manifests for the 
 
 Current state: manifests still live in each package's `k8s/` folder. Recommended next steps:
 
-  - pv-client/k8s/
+  - pv-spa/k8s/
   - pv-api/k8s/
   - pv-converter/k8s/
   - pv-temporal-worker/k8s/

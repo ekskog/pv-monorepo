@@ -1,10 +1,10 @@
-# PhotoVault Authentication System
+# pv Authentication System
 
-This document describes the dual-mode authentication system implemented in PhotoVault, supporting both development (demo) and production (database) authentication modes.
+This document describes the dual-mode authentication system implemented in pv, supporting both development (demo) and production (database) authentication modes.
 
 ## Overview
 
-PhotoVault now supports two authentication modes:
+pv now supports two authentication modes:
 
 1. **Demo Mode** (`demo`) - For development and testing with hardcoded credentials
 2. **Database Mode** (`database` or `api`) - For production with MariaDB user authentication

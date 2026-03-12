@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pv-client
+  name: pv-spa
   namespace: pv
   labels:
-    app: pv-client
+    app: pv-spa
     component: client
 spec:
   replicas: 1
@@ -15,61 +15,36 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      app: pv-client
+      app: pv-spa
   template:
     metadata:
       labels:
-        app: pv-client
+        app: pv-spa
         component: client
       annotations:
         # This annotation will be updated by the CI/CD pipeline to force pod recreation
         deployment.kubernetes.io/revision: "1"
     spec:
       containers:
-      - name: pv-client
-        image: ghcr.io/ekskog/pv-client:latest
+      - name: pv-spa
+        image: ghcr.io/ekskog/pv-spa:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 80
           name: http
-        # Explicit mappings (preferred) — pull specific keys from ConfigMap/Secret
         env:
+        # API Configuration
         - name: VITE_API_URL
-          valueFrom:
-            secretKeyRef:
-              name: pv-client-secrets
-              key: VITE_API_URL
-        - name: VITE_AUTH_ENDPOINT
-          valueFrom:
-            secretKeyRef:
-              name: pv-client-secrets
-              key: VITE_AUTH_ENDPOINT
-        - name: VITE_USER_ENDPOINT
-          valueFrom:
-            secretKeyRef:
-              name: pv-client-secrets
-              key: VITE_USER_ENDPOINT
-        - name: VITE_JWT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: pv-client-secrets
-              key: VITE_JWT_SECRET
-        - name: VITE_DEBUG_MODE
-          valueFrom:
-            configMapKeyRef:
-              name: pv-client-config
-              key: VITE_DEBUG_MODE
-        - name: VITE_LOG_LEVEL
-          valueFrom:
-            configMapKeyRef:
-              name: pv-client-config
-              key: VITE_LOG_LEVEL
-        # Load remaining keys from ConfigMap and Secret
+          value: "https://vault-api.ekskog.net"
+        # Debug Configuration
+        - name: VITE_DEBUG
+          value: "false"  # Set to "true" or "ekskog:*" to enable debug logging
+        - name: VITE_DEBUG_PATTERN
+          value: "ekskog:*"  # Debug pattern when debugging is enabled
+        # Load non-sensitive config from ConfigMap
         envFrom:
         - configMapRef:
-            name: pv-client-config
-        - secretRef:
-            name: pv-client-secrets
+            name: pv-spa-config
         resources:
           requests:
             memory: "64Mi"

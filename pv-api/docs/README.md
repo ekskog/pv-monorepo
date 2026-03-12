@@ -1,6 +1,6 @@
-# PhotoVault API
+# pv API
 
-![Build and Deploy](https://github.com/ekskog/pv-api/workflows/Build%20and%20Deploy%20PhotoVault%20API/badge.svg)
+![Build and Deploy](https://github.com/ekskog/pv-api/workflows/Build%20and%20Deploy%20pv%20API/badge.svg)
 
 A Node.js Express API for managing photo storage with MinIO backend. This API provides comprehensive file and folder management capabilities for building photo gallery applications.
 
@@ -44,7 +44,7 @@ Get API information and status.
 **Response:**
 ```json
 {
-  "message": "PhotoVault API is running!",
+  "message": "pv API is running!",
   "timestamp": "2025-06-04T16:00:00.000Z",
   "version": "1.0.0"
 }
@@ -420,7 +420,7 @@ Automated deployment via GitHub Actions on push to main branch:
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Client App    │────│  PhotoVault API │────│   MinIO Server  │
+│   Client App    │────│  pv API │────│   MinIO Server  │
 │  (Vue.js/etc)   │    │   (Express.js)  │    │ (S3 Compatible) │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```

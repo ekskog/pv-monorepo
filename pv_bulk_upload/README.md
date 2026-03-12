@@ -1,6 +1,6 @@
-# PhotoVault Bulk Upload Tool
+# pv Bulk Upload Tool
 
-A Node.js command-line tool for bulk uploading photos to PhotoVault API with interactive album management.
+A Node.js command-line tool for bulk uploading photos to pv API with interactive album management.
 
 ## Features
 
@@ -86,11 +86,11 @@ When creating a new album, you'll be prompted to enter the month/year in MM/YYYY
 
 ```bash
 $ node index.js
-[INFO] PhotoVault Bulk Upload Tool
+[INFO] pv Bulk Upload Tool
 [INFO] Server: https://vault-api.hbvu.su
 [INFO] Bucket: pv
 [INFO] Username: admin
-[INFO] Authenticating with PhotoVault API...
+[INFO] Authenticating with pv API...
 [GREEN] Authentication successful
 Enter album name (or "quit" to exit): OXBERG
 [INFO] Album name capitalized to: OXBERG
@@ -140,7 +140,7 @@ The tool provides clear error messages for:
 
 - Node.js 14+
 - npm
-- Access to PhotoVault API server
+- Access to pv API server
 
 ## Troubleshooting
 

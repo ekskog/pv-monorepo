@@ -19,8 +19,9 @@ COPY . .
 # Accept build-time environment variables (only API URL needed)
 ARG VITE_API_URL=https://vault-api.ekskog.net
 
-# Set environment variables for build
-ENV VITE_API_URL=$VITE_API_URL
+# Set environment variables for build; fall back to the ARG default when the
+# build-arg is supplied as an empty string (e.g. from an unset CI secret).
+ENV VITE_API_URL=${VITE_API_URL:-https://vault-api.ekskog.net}
 
 # Declare the build argument
 ARG VITE_TURNSTILE_SITE_KEY

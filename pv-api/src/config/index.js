@@ -10,7 +10,7 @@ const config = {
 
   // CORS Configuration
   cors: {
-    origins: [
+    origin: [
       "https://photos.ekskog.me",
       "http://localhost:5173", // Development
       "http://localhost:3000", // Alternative dev port

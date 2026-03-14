@@ -4,7 +4,7 @@
 class ConfigService {
   constructor() {
     this.config = {
-      apiUrl: import.meta.env.VITE_API_URL,
+      apiUrl: import.meta.env.VITE_API_URL || 'https://vault-api.ekskog.net',
     }
 
     console.log('🔧 Config: Loaded from environment variables:', this.config)

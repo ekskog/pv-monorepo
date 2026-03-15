@@ -80,26 +80,48 @@ class MetadataService {
       } catch (exifrError) {
         console.log(`[METADATA-SERVICE] ! exifr failed for ${filename}: ${exifrError.message}. Trying sharp fallback...`);
         try {
-          // Fallback to sharp to extract raw EXIF buffer
-          console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] Reading metadata with sharp for ${filename}`);
-          const sharpMeta = await sharp(buffer).metadata();
-          if (sharpMeta.exif) {
-            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] Found EXIF block with sharp. Parsing with exifr...`);
-            // Parse the raw EXIF buffer from sharp
-            exifData = await exifr.parse(sharpMeta.exif, exifrOptions);
-            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] exifr parse of sharp's EXIF buffer succeeded for ${filename}`);
-          } else {
-            // If no exif block, at least try using sharp's basic width/height
-            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] No EXIF block found by sharp. Using basic dimensions.`);
-            exifData = {
-              ImageWidth: sharpMeta.width,
-              ImageHeight: sharpMeta.height,
-              Orientation: sharpMeta.orientation,
-              ColorSpace: sharpMeta.space,
-            };
+          // If the file is HEIC, try using our heic-decode dependency to extract EXIF
+          let rawExifBuffer = null;
+
+          if (filename.toLowerCase().endsWith('.heic')) {
+            console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] Attempting to extract EXIF with heic-decode for ${filename}`);
+            const heicDecode = require('heic-decode');
+            const heicData = await heicDecode({ buffer });
+
+            // Extract EXIF data if present in the HEIC blocks
+            const exifBlock = heicData.images[0]?.exif;
+            if (exifBlock) {
+              console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] Found EXIF block. Parsing with exifr...`);
+              rawExifBuffer = exifBlock;
+            }
           }
-        } catch (sharpError) {
-          console.error(`[METADATA-SERVICE] [SHARP-FALLBACK] !!! Fallback failed for ${filename}:`, sharpError.message);
+
+          if (!rawExifBuffer) {
+            // Fallback to sharp to extract raw EXIF buffer for other formats
+            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] Reading metadata with sharp for ${filename}`);
+            const sharpMeta = await sharp(buffer).metadata();
+            rawExifBuffer = sharpMeta.exif;
+
+            if (!rawExifBuffer) {
+              // If no exif block, at least try using sharp's basic width/height
+              console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] No EXIF block found by sharp. Using basic dimensions.`);
+              exifData = {
+                ImageWidth: sharpMeta.width,
+                ImageHeight: sharpMeta.height,
+                Orientation: sharpMeta.orientation,
+                ColorSpace: sharpMeta.space,
+              };
+            }
+          }
+
+          if (rawExifBuffer) {
+            console.log(`[METADATA-SERVICE] Parsing extracted EXIF buffer...`);
+            // Parse the extracted raw EXIF buffer
+            exifData = await exifr.parse(rawExifBuffer, exifrOptions);
+            console.log(`[METADATA-SERVICE] EXIF buffer parsing succeeded for ${filename}`);
+          }
+        } catch (fallbackError) {
+          console.error(`[METADATA-SERVICE] [FALLBACK] !!! Fallback failed for ${filename}:`, fallbackError.message);
           throw exifrError; // Throw original error if fallback also fails
         }
       }

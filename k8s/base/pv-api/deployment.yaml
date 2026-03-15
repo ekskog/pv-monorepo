@@ -39,12 +39,17 @@ spec:
           secretKeyRef:
             name: pv-api-secret
             key: CLOUDFLARE_API_TOKEN
+        - name: AVIF_CONVERTER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: pv-api-config
+              key: AVIF_CONVERTER_URL
         # Load remaining config and secrets
         envFrom:
         - configMapRef:
-          name: pv-api-config
+            name: pv-api-config
         - secretRef:
-          name: pv-api-secret
+            name: pv-api-secret
         volumeMounts:
         - name: log-storage
           mountPath: /app/logs

@@ -10,36 +10,17 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (including devDependencies for build)
+# Install dependencies
 RUN npm ci
 
 # Copy source code
 COPY . .
 
-# Accept build-time environment variables (only API URL needed)
-ARG VITE_API_URL=https://vault-api.ekskog.net
-
-# Set environment variables for build; fall back to the ARG default when the
-# build-arg is supplied as an empty string (e.g. from an unset CI secret).
-ENV VITE_API_URL=${VITE_API_URL:-https://vault-api.ekskog.net}
-
-# Declare the build argument
-ARG VITE_TURNSTILE_SITE_KEY
-
-# Make it available as an environment variable inside the container
-ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
-RUN echo "Turnstile key length: ${#VITE_TURNSTILE_SITE_KEY}"
-
-
-# Build the app
+# Build the app (no env variables needed during build!)
 RUN npm run build
-
 
 # Production stage
 FROM nginx:alpine AS production-stage
-
-# Install envsubst for runtime environment variable substitution
-RUN apk add --no-cache gettext
 
 # Copy built app from build stage
 COPY --from=build-stage /app/dist /usr/share/nginx/html
@@ -47,11 +28,8 @@ COPY --from=build-stage /app/dist /usr/share/nginx/html
 # Copy custom nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Create a simple startup script
-RUN echo '#!/bin/sh' > /docker-entrypoint.sh && \
-    echo 'echo "Starting HBVU PHOTOS Frontend..."' >> /docker-entrypoint.sh && \
-    echo 'nginx -g "daemon off;"' >> /docker-entrypoint.sh
-
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Expose port 80

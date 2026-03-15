@@ -68,6 +68,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import authService from '../services/auth.js'
+import configService from '../services/config.js'
 
 const emit = defineEmits(['login-success', 'close'])
 
@@ -81,7 +82,7 @@ const usernameInput = ref(null)
 const turnstileRef = ref(null)
 const widgetId = ref(null)
 
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY
+const TURNSTILE_SITE_KEY = configService.get('turnstileSiteKey')
 
 const isFormValid = computed(() => username.value.trim() && password.value.trim())
 

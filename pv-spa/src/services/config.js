@@ -3,11 +3,26 @@
 
 class ConfigService {
   constructor() {
+    // Read from window.__ENV__ (injected by Docker at runtime)
+    // Fallback to import.meta.env for local Vite development/testing
+    const env = window.__ENV__ || {};
+
     this.config = {
-      apiUrl: import.meta.env.VITE_API_URL || 'https://vault-api.ekskog.net',
+      apiUrl: env.API_URL || import.meta.env.VITE_API_URL || 'https://vault-api.ekskog.net',
+      appTitle: env.APP_TITLE || import.meta.env.VITE_APP_TITLE || 'EKSKOG PHOTOS',
+      appDescription: env.APP_DESCRIPTION || import.meta.env.VITE_APP_DESCRIPTION || 'Secure Photo Gallery',
+      enableUserManagement: (env.ENABLE_USER_MANAGEMENT || import.meta.env.VITE_ENABLE_USER_MANAGEMENT) === 'true',
+      enableAlbumSharing: (env.ENABLE_ALBUM_SHARING || import.meta.env.VITE_ENABLE_ALBUM_SHARING) === 'true',
+      enablePhotoComments: (env.ENABLE_PHOTO_COMMENTS || import.meta.env.VITE_ENABLE_PHOTO_COMMENTS) === 'true',
+      maxUploadSize: parseInt(env.MAX_UPLOAD_SIZE || import.meta.env.VITE_MAX_UPLOAD_SIZE || '20485760', 10),
+      thumbnailQuality: parseInt(env.THUMBNAIL_QUALITY || import.meta.env.VITE_THUMBNAIL_QUALITY || '80', 10),
+      lazyLoading: (env.LAZY_LOADING || import.meta.env.VITE_LAZY_LOADING || 'true') === 'true',
+      debugMode: (env.DEBUG_MODE || import.meta.env.VITE_DEBUG_MODE) === 'true',
+      logLevel: env.LOG_LEVEL || import.meta.env.VITE_LOG_LEVEL || 'info',
+      turnstileSiteKey: env.TURNSTILE_SITE_KEY || import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
     }
 
-    console.log('🔧 Config: Loaded from environment variables:', this.config)
+    console.log('🔧 Config: Loaded from runtime configuration:', this.config)
   }
 
   // Get entire config

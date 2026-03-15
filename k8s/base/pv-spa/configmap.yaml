@@ -13,23 +13,26 @@ data:
   NODE_ENV: "production"
   
   # UI Configuration
-  VITE_APP_TITLE: "EKSKOG PHOTOS"
-  VITE_APP_DESCRIPTION: "Secure Photo Gallery"
+  APP_TITLE: "EKSKOG PHOTOS"
+  APP_DESCRIPTION: "Secure Photo Gallery"
   
   # Feature Flags
-  VITE_ENABLE_USER_MANAGEMENT: "true"
-  VITE_ENABLE_ALBUM_SHARING: "false"
-  VITE_ENABLE_PHOTO_COMMENTS: "false"
+  ENABLE_USER_MANAGEMENT: "true"
+  ENABLE_ALBUM_SHARING: "false"
+  ENABLE_PHOTO_COMMENTS: "false"
   
   # Performance Settings
-  VITE_MAX_UPLOAD_SIZE: "20485760"  # 10MB in bytes
-  VITE_THUMBNAIL_QUALITY: "80"
-  VITE_LAZY_LOADING: "true"
+  MAX_UPLOAD_SIZE: "20485760"  # 10MB in bytes
+  THUMBNAIL_QUALITY: "80"
+  LAZY_LOADING: "true"
   
   # Debug Configuration (non-sensitive)
-  VITE_DEBUG_MODE: "false"  # Can be overridden in deployment
-  VITE_LOG_LEVEL: "info"    # error, warn, info, debug
+  DEBUG_MODE: "false"  # Can be overridden in deployment
+  LOG_LEVEL: "info"    # error, warn, info, debug
   
   # Security Headers (non-sensitive)
   SECURITY_HEADERS_ENABLED: "true"
   CORS_ENABLED: "true"
+
+  # External Services
+  TURNSTILE_SITE_KEY: "0x4AAAAAABxuiZHUrM0VTikw"

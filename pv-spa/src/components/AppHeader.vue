@@ -177,11 +177,13 @@ const mobileSearchQuery = ref("");ible on md and below) -->
     <div class="flex items-center gap-4">
       <!-- Status Dot (always visible) -->
       <div
-        :class="isHealthy ? 'bg-green-500' : 'bg-red-500'"
+        :class="statusDotClass"
+        :title="healthTooltip"
         class="w-3 h-3 rounded-full flex items-center justify-center text-white text-[0.5rem] leading-none"
       >
-        <i :class="isHealthy ? 'fas fa-check' : 'fas fa-exclamation'"></i>
+        <i :class="statusIconClass"></i>
       </div>
+      <span class="hidden lg:inline text-xs text-gray-600">{{ healthStatus }}</span>
 
       <!-- User Menu (hidden on sm, visible on md+) -->
       <div
@@ -269,6 +271,8 @@ const emit = defineEmits(["navigate", "logout", "login", "register", "search"]);
 
 const isHealthy = ref(false);
 const healthStatus = ref("Checking...");
+const healthLevel = ref("checking");
+const healthServices = ref({});
 const showUserDropdown = ref(false);
 const showPasswordDialog = ref(false);
 const userMenuRef = ref(null);
@@ -276,8 +280,35 @@ const showMobileMenu = ref(false);
 const showMobileUserDropdown = ref(false);
 const searchQuery = ref("");
 const mobileSearchQuery = ref("");
+const HEALTH_CHECK_INTERVAL_MS = 60000;
+let healthCheckTimer = null;
 
 const isAdmin = computed(() => props.currentUser?.role === "admin");
+
+const statusDotClass = computed(() => {
+  if (healthLevel.value === "healthy") return "bg-green-500";
+  if (healthLevel.value === "degraded") return "bg-amber-500";
+  return "bg-red-500";
+});
+
+const statusIconClass = computed(() => {
+  if (healthLevel.value === "healthy") return "fas fa-check";
+  if (healthLevel.value === "degraded") return "fas fa-minus";
+  return "fas fa-exclamation";
+});
+
+const healthTooltip = computed(() => {
+  const details = [];
+  if (Object.keys(healthServices.value).length > 0) {
+    details.push(`MinIO: ${healthServices.value.minio ? "up" : "down"}`);
+    details.push(`Database: ${healthServices.value.database ? "up" : "down"}`);
+    details.push(`Temporal: ${healthServices.value.temporal ? "up" : "down"}`);
+  }
+
+  return details.length > 0
+    ? `${healthStatus.value} (${details.join(", ")})`
+    : healthStatus.value;
+});
 
 const toggleMobileMenu = () => {
   console.log("Hamburger clicked");
@@ -331,10 +362,25 @@ const checkHealth = async () => {
   try {
     const health = await apiService.getHealth();
     console.log("Health:", health);
-    isHealthy.value = health.status === "healthy";
-    healthStatus.value = isHealthy.value ? "Connected" : "Disconnected";
+    healthServices.value = health?.services || {};
+
+    // Support both API formats: { ready: true } and { status: "healthy" }
+    isHealthy.value =
+      health?.ready === true ||
+      health?.status === "healthy" ||
+      health?.status === "ok";
+
+    if (isHealthy.value) {
+      healthLevel.value = "healthy";
+      healthStatus.value = "Healthy";
+    } else {
+      healthLevel.value = "degraded";
+      healthStatus.value = "Degraded";
+    }
   } catch {
     isHealthy.value = false;
+    healthLevel.value = "offline";
+    healthServices.value = {};
     healthStatus.value = "Offline";
   }
 };
@@ -355,9 +401,14 @@ const handleClickOutside = (e) => {
 };
 onMounted(() => {
   checkHealth();
+  healthCheckTimer = setInterval(checkHealth, HEALTH_CHECK_INTERVAL_MS);
   document.addEventListener("click", handleClickOutside);
 });
 onUnmounted(() => {
+  if (healthCheckTimer) {
+    clearInterval(healthCheckTimer);
+    healthCheckTimer = null;
+  }
   document.removeEventListener("click", handleClickOutside);
 });
 </script>

@@ -56,7 +56,7 @@
     <div class="flex items-center justify-between gap-4 flex-wrap">
       <div class="flex items-center gap-3 flex-grow min-w-0">
         <h2
-          class="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2 truncate"
+          class="text-xl font-semibold text-gray-900 flex items-center gap-2 truncate"
         >
           <i class="fas fa-images text-blue-500"></i> {{ cleanAlbumName }}
         </h2>

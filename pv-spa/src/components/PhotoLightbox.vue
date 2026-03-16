@@ -167,7 +167,7 @@ const canShowEditButton = computed(() => {
 // Watch for photo changes
 watch(currentPhoto, () => {
   imageLoaded.value = false
-  showMetadata.value = false // Hide metadata when changing photos
+  showMetadata.value = false // Hide Metadatadata when changing photos
 })
 
 // Methods

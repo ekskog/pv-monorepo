@@ -9,6 +9,7 @@
         :key="photo.name"
         :photo="photo"
         :photo-metadata-lookup="photoMetadataLookup"
+        :show-metadata="showMetadata"
         :image-loaded="imageLoadedMap[photo.name]"
         :albumName="albumName"
         :bucketName="bucketName"
@@ -65,6 +66,7 @@ const props = defineProps({
   imageLoadedMap: { type: Object, required: true },
   albumName: { type: String, required: true },
   bucketName: { type: String, required: true },
+  showMetadata: { type: Boolean, default: true },
   itemsPerPage: { type: Number, default: 24 },
   autoLoad: { type: Boolean, default: false } // Set to true for infinite scroll
 })

@@ -25,7 +25,7 @@
         <i class="fas fa-image"></i>
       </div>
     </div>
-    <div class="p-3">
+    <div v-if="showMetadata" class="p-3">
       <div class="flex items-center gap-2 text-sm text-gray-600 mb-1">
         <i class="fas fa-clock text-xs text-gray-400 w-3"></i>
         {{ formatPhotoTimestamp(photo) }}
@@ -45,6 +45,7 @@ import apiService from '../services/api.js'
 const props = defineProps({
   photo: { type: Object, required: true },
   photoMetadataLookup: { type: Object, required: true },
+  showMetadata: { type: Boolean, default: true },
   imageLoaded: { type: Boolean, default: false },
   bucketName: { type: String, required: true },
   albumName: { type: String, required: true }

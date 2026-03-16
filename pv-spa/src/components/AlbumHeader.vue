@@ -39,6 +39,15 @@
         >
           <i class="fas fa-plus"></i>
         </button>
+
+        <button
+          class="bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-400 px-3 py-2 rounded-md text-sm transition flex items-center gap-2 h-10"
+          @click="$emit('metadataToggle')"
+          :title="showMetadata ? 'Hide metadata' : 'Show metadata'"
+        >
+          <i :class="showMetadata ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+          <span class="hidden sm:inline">{{ showMetadata ? 'Hide Meta' : 'Show Meta' }}</span>
+        </button>
        
       </div>
     </div>
@@ -101,9 +110,10 @@ const props = defineProps({
   canUploadPhotos: { type: Boolean, default: false },
   isPublic: { type: Boolean, default: false },
   mediaType: { type: String, default: 'images' }, // 'images' or 'videos'
+  showMetadata: { type: Boolean, default: true },
 });
 
-const emit = defineEmits(["back", "refresh", "upload", "mediaTypeChange"]);
+const emit = defineEmits(["back", "refresh", "upload", "mediaTypeChange", "metadataToggle"]);
 
 const cleanAlbumName = computed(() => {
   const match = props.albumName.match(/^(.*)\.(\d{2})\/$/);

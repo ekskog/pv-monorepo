@@ -7,10 +7,12 @@
       :loading="loading"
       :can-upload-photos="canUploadPhotos"
       :media-type="mediaType"
+      :show-metadata="showPhotoMetadata"
       @back="$emit('back')"
       @refresh="refreshAlbum"
       @upload="showUploadDialog = true"
       @media-type-change="mediaType = $event"
+      @metadata-toggle="showPhotoMetadata = !showPhotoMetadata"
     />
 
     <!-- Sort Controls - Add this section -->
@@ -95,6 +97,7 @@
       :image-loaded-map="imageLoadedMap"
       :album-name="albumName"
       :bucket-name="BUCKET_NAME"
+      :show-metadata="showPhotoMetadata"
       :items-per-page="24"
       :auto-load="false"
       @photo-click="openPhoto"
@@ -227,6 +230,7 @@ const sortOrder = ref('chronological'); // 'chronological' or 'reverse'
 
 // NEW: Media type state (images or videos)
 const mediaType = ref('images'); // 'images' or 'videos'
+const showPhotoMetadata = ref(true);
 
 // Helper function to sort photos by timestamp
 const sortPhotosByTimestamp = (photosArray, order = 'chronological') => {

@@ -83,7 +83,14 @@ module.exports = (temporalClient, config) => {
                         await temporalClient.workflow.start('processBatchImages', {
                             taskQueue,
                             workflowId: `batch-${batchId}`,
-                            args: [{ batchId, batchDir, images: imagePaths, folder }],
+                            args: [{
+                                batchId,
+                                batchDir,
+                                images: imagePaths,
+                                // Keep both keys temporarily for backward compatibility across worker versions.
+                                folder,
+                                albumName: folder,
+                            }],
                         });
                     console.log(`[Background] Workflow started for batch ${batchId}`);
                     console.log(`[Background] Will save to album ${folder} after processing.`);

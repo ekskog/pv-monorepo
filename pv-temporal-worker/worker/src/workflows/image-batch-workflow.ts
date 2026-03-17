@@ -23,7 +23,8 @@ export interface BatchInput {
   batchId: string;
   batchDir: string;
   images: ImageFile[];
-  folder: string; 
+  folder?: string;
+  albumName?: string;
 }
 
 export interface BatchResult {
@@ -39,10 +40,15 @@ export interface BatchResult {
  */
 export async function processBatchImages(input: BatchInput): Promise<BatchResult> {
   const startTime = Date.now();
-  const { batchId, batchDir, images, folder } = input;
+  const { batchId, batchDir, images } = input;
+  const albumName = input.albumName || input.folder;
+
+  if (!albumName) {
+    throw new Error(`Missing albumName/folder for batch ${batchId}`);
+  }
   
   log.info(`Starting batch ${batchId} with ${images.length} images`);
-  log.info(`Folder directory: ${folder || 'N/A'}`);
+  log.info(`Album destination: ${albumName}`);
   
   // 3. Typed Map (Fixes 'image' implicitly has 'any' type)
   const conversionPromises = images.map(async (image: ImageFile) => {
@@ -56,7 +62,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
         const storageInfo = await persistToMinio(
           result.avifPath,
           image.filename, 
-          folder
+          albumName
         );
         
         return {

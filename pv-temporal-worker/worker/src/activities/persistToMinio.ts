@@ -10,7 +10,8 @@ const minioClient = new Minio.Client({
   secretKey: process.env.MINIO_SECRET_KEY || 'REDACTED',
 });
 
-const DEFAULT_BUCKET = process.env.MINIO_BUCKET_NAME || 'pv';
+// Contract: temporal bulk uploads always persist under the photovault bucket.
+const BULK_UPLOAD_BUCKET = 'photovault';
 
 /**
  * Moves the converted file from the NFS scratchpad to MinIO storage.
@@ -18,26 +19,26 @@ const DEFAULT_BUCKET = process.env.MINIO_BUCKET_NAME || 'pv';
 export async function persistToMinio(
   avifPath: string,
   filename: string,
-  folder: string
+  albumName: string
 ): Promise<{ minioPath: string }> {
   // Use path.parse to get the name without the extension (e.g., "003.JPG" -> "003")
   const fileNameWithoutExt = path.parse(filename).name;
-  const objectName = `${folder}/${fileNameWithoutExt}.avif`;
+  const objectName = `${albumName}/${fileNameWithoutExt}.avif`;
 
   try {
     const avifBuffer = await fs.readFile(avifPath);
 
     await minioClient.putObject(
-      DEFAULT_BUCKET,
+      BULK_UPLOAD_BUCKET,
       objectName,
       avifBuffer,
       avifBuffer.length,
       { 'Content-Type': 'image/avif' }
     );
 
-    console.log(`✓ Persisted to MinIO: ${objectName}`);
+    console.log(`✓ Persisted to MinIO: ${BULK_UPLOAD_BUCKET}/${objectName}`);
     return {
-      minioPath: `${DEFAULT_BUCKET}/${objectName}`
+      minioPath: `${BULK_UPLOAD_BUCKET}/${objectName}`
     };
   } catch (error) {
     console.error(`Failed MinIO upload:`, error);

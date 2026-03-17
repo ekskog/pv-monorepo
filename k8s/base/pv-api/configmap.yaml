@@ -15,6 +15,7 @@ data:
   # Temporal Configuration
   # This points to the Temporal Frontend service in your cluster
   TEMPORAL_ADDRESS: "temporal-frontend.temporal.svc.cluster.local:7233"
+  TEMPORAL_NAMESPACE: "photovault"
   TASK_QUEUE: "image-processing"
   
   # NFS Storage Path

@@ -47,11 +47,11 @@ let temporalClient;
 async function initTemporal() {
   try {
     const connection = await Connection.connect({
-      address: process.env.TEMPORAL_ADDRESS || 'localhost:7233', // Adjust to your cluster address
+      address: config.temporal.address,
     });
     temporalClient = new TemporalClient({
       connection,
-      namespace: 'pv',
+      namespace: config.temporal.namespace,
     });
     debugServer("✓ Temporal Client initialized");
   } catch (err) {

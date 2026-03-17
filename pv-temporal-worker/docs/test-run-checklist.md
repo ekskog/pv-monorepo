@@ -31,8 +31,8 @@ kubectl -n "$NS" get pods -l app=pv-worker
 Check queue/env wiring is present:
 
 ```bash
-kubectl -n "$NS" get configmap pv-api-config -o yaml | grep -E "TASK_QUEUE|TEMPORAL_ADDRESS|NFS_PATH"
-kubectl -n "$NS" get deploy pv-worker -o yaml | grep -E "TASK_QUEUE|TEMPORAL_ADDRESS|AVIF_CONVERTER_URL"
+kubectl -n "$NS" get configmap pv-api-config -o yaml | grep -E "TASK_QUEUE|TEMPORAL_ADDRESS|TEMPORAL_NAMESPACE|NFS_PATH"
+kubectl -n "$NS" get configmap pv-worker-config -o yaml | grep -E "TASK_QUEUE|TEMPORAL_ADDRESS|TEMPORAL_NAMESPACE|AVIF_CONVERTER_URL"
 ```
 
 Optional: verify recent logs do not show startup config errors:

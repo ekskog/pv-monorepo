@@ -23,13 +23,9 @@ spec:
       - name: worker
         image: ghcr.io/ekskog/pv-worker:main-5e0bb1e
         imagePullPolicy: Always
-        env:
-        - name: TEMPORAL_ADDRESS
-          value: "temporal-frontend.temporal.svc.cluster.local:7233"
-        - name: TASK_QUEUE
-          value: "image-processing"
-        - name: AVIF_CONVERTER_URL
-          value: "http://pv-avif-converter-service.pv.svc.cluster.local:3000"
+        envFrom:
+        - configMapRef:
+            name: pv-worker-config
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfs-storage

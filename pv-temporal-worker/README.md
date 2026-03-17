@@ -28,7 +28,7 @@ This component processes batch uploads asynchronously by converting images to AV
 - MinIO reachable by worker.
 - API and worker must use the same Temporal namespace and task queue.
 
-Current namespace is `pv`.
+Namespace is runtime-configurable via `TEMPORAL_NAMESPACE`.
 
 ## Environment Variables
 
@@ -36,6 +36,7 @@ Current namespace is `pv`.
 
 - `TEMPORAL_ADDRESS`: Temporal frontend address.
 	Example: `temporal-frontend.temporal.svc.cluster.local:7233`
+- `TEMPORAL_NAMESPACE`: Required. Temporal namespace (example: `photovault`).
 - `TASK_QUEUE`: Required. Queue this worker listens on.
 - `AVIF_CONVERTER_URL`: Converter endpoint.
 	Example: `http://pv-avif-converter-service.pv.svc.cluster.local:3000`
@@ -46,6 +47,7 @@ Current namespace is `pv`.
 ### API (related)
 
 - `TEMPORAL_ADDRESS`: Temporal frontend address.
+- `TEMPORAL_NAMESPACE`: Temporal namespace used by API Temporal client.
 - `TASK_QUEUE` or configured `config.temporal.taskQueue`: Queue used when starting workflows.
 - `NFS_PATH`: Shared staging path (default in API config: `/nfs-storage`).
 

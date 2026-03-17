@@ -4,15 +4,21 @@ import * as persistActivities from './activities/persistToMinio';
 
 const TEMPORAL_ADDRESS = process.env.TEMPORAL_ADDRESS ||
   'temporal-frontend.temporal.svc.cluster.local:7233';
+const TEMPORAL_NAMESPACE = process.env.TEMPORAL_NAMESPACE;
 const TASK_QUEUE = process.env.TASK_QUEUE;
 
 async function run() {
+  if (!TEMPORAL_NAMESPACE) {
+    throw new Error('TEMPORAL_NAMESPACE environment variable is required');
+  }
+
   if (!TASK_QUEUE) {
     throw new Error('TASK_QUEUE environment variable is required');
   }
 
   console.log('Starting Temporal worker...');
   console.log(`Temporal: ${TEMPORAL_ADDRESS}`);
+  console.log(`Namespace: ${TEMPORAL_NAMESPACE}`);
   console.log(`Task queue: ${TASK_QUEUE}`);
 
   // Connect to Temporal
@@ -25,7 +31,7 @@ async function run() {
   // Create worker
   const worker = await Worker.create({
     connection,
-    namespace: 'pv',
+    namespace: TEMPORAL_NAMESPACE,
     taskQueue: TASK_QUEUE,
     workflowsPath: require.resolve('./workflows/image-batch-workflow'),
     activities: {

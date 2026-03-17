@@ -6,7 +6,7 @@ Use this spec when Temporal, NFS, MinIO, and AVIF converter are already running 
 Validate upload pipeline changes (namespace, queue configuration, final status payload) against existing Kubernetes services.
 
 Success criteria for this test pass:
-- API and worker operate in Temporal namespace `pv`.
+- API and worker operate in the same configured Temporal namespace.
 - Task queue is configuration-driven and present at runtime.
 - `POST /bulk/upload/:folder` responds `202` quickly.
 - `GET /bulk/status/:workflowId` returns final `result` payload for completed workflows.
@@ -47,16 +47,18 @@ For both options:
 - NFS volume mounted for runtime where API and worker execute.
 
 Required runtime config:
-- Namespace: `pv`.
+- Namespace: value from `TEMPORAL_NAMESPACE` (for example `photovault`).
 - Task queue: `image-processing` (or your chosen queue) set via env/config, not source hardcoding.
 
 Expected variables for API:
 - `TEMPORAL_ADDRESS`
+- `TEMPORAL_NAMESPACE`
 - `TASK_QUEUE` (or `TEMPORAL_TASK_QUEUE`)
 - `NFS_PATH`
 
 Expected variables for worker:
 - `TEMPORAL_ADDRESS`
+- `TEMPORAL_NAMESPACE`
 - `TASK_QUEUE`
 - `AVIF_CONVERTER_URL`
 - `MINIO_ACCESS_KEY`

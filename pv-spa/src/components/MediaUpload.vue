@@ -14,7 +14,7 @@
       </h3>
 
       <!-- Upload Type Selector -->
-      <div class="flex gap-2 mb-6">
+      <div class="flex gap-2 mb-3">
         <button
           class="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:border-blue-500 hover:text-blue-500 transition"
           @click="triggerUpload('photos')"
@@ -27,8 +27,11 @@
         >
           <i class="fas fa-video text-base"></i> Videos
         </button>
+      </div>
+
+      <div class="mb-6">
         <button
-          class="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:border-emerald-500 hover:text-emerald-600 transition"
+          class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-emerald-300 bg-emerald-50 rounded-lg text-emerald-800 text-sm font-semibold hover:border-emerald-500 hover:bg-emerald-100 transition"
           @click="triggerUpload('bulk-photos')"
           title="Temporal bulk upload for large photo batches (no 10-file limit)."
         >

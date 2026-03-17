@@ -30,26 +30,36 @@ jobs:
             context: pv-spa
             image: ghcr.io/ekskog/pv-spa
             deployment: pv-spa
+            container: pv-spa
+            manifests_dir: k8s/base/pv-spa
           - name: pv-api
             path: pv-api
             context: pv-api
             image: ghcr.io/ekskog/pv-api
             deployment: pv-api
+            container: pv-api
+            manifests_dir: k8s/base/pv-api
           - name: pv-converter
             path: pv-converter
             context: pv-converter
             image: ghcr.io/ekskog/pv-converter
-            deployment: pv-converter
+            deployment: pv-avif-converter
+            container: pv-avif-converter
+            manifests_dir: k8s/base/pv-converter
           - name: pv-temporal-worker
             path: pv-temporal-worker
             context: pv-temporal-worker/worker
-            image: ghcr.io/ekskog/pv-temporal-worker
+            image: ghcr.io/ekskog/pv-worker
             deployment: pv-worker
+            container: worker
+            manifests_dir: k8s/base/pv-temporal-worker
           - name: pv-uploader
             path: pv-uploader
             context: pv-uploader
             image: ghcr.io/ekskog/pv-uploader
-            deployment: pv-uploader
+            deployment: ""
+            container: ""
+            manifests_dir: k8s/base/pv-uploader
 
     steps:
       - name: Checkout
@@ -95,7 +105,22 @@ jobs:
 
       - name: Set short SHA
         id: vars
-        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+
+      - name: Check deploy prerequisites
+        id: deploy
+        if: steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true'
+        env:
+          KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [ -n "$KUBECONFIG_SECRET" ]; then
+            echo "has_kubeconfig=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_kubeconfig=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Skip if no changes
         if: steps.changed.outputs.changed == 'false'
@@ -120,95 +145,107 @@ jobs:
           context: ${{ matrix.context }}
           push: true
           tags: |
-            ${{ matrix.image }}:${{ env.SHORT_SHA }}
+            ${{ matrix.image }}:${{ steps.vars.outputs.short_sha }}
             ${{ matrix.image }}:latest
 
-#      - name: Prepare kubeconfig
-#        if: steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true'
-#        continue-on-error: true
-#        run: |
-#          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
-#            echo "KUBECONFIG secret not provided; skipping deploy steps"
-#            exit 0
-#          fi
-#          echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml
-#          echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
-#
-#      - name: Create or update image pull secret
-#        if: env.KUBECONFIG && (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true')
-#        continue-on-error: true
-#        run: |
-#          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
-#            echo "No kubeconfig; skipping image-pull-secret creation"
-#            exit 0
-#          fi
-#          kubectl create secret docker-registry ghcr-secret \
-#            --docker-server=ghcr.io \
-#            --docker-username=${{ github.actor }} \
-#            --docker-password="${{ secrets.EK_GITHUB_PAT }}" \
-#            --namespace=pv \
-#            --kubeconfig=kubeconfig.yaml \
-#            --dry-run=client -o yaml | kubectl apply -f - --kubeconfig=kubeconfig.yaml
-#
-#      - name: Update deployment image
-#        if: steps.changed.outputs.changed == 'true'
-#        continue-on-error: true
-#        run: |
-#          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
-#            echo "No kubeconfig; skipping image update"
-#            exit 0
-#          fi
-#          IMAGE=${{ matrix.image }}:${{ env.SHORT_SHA }}
-#          echo "Updating deployment ${{ matrix.deployment }} to $IMAGE"
-#          kubectl set image deployment/${{ matrix.deployment }} \
-#            ${{ matrix.deployment }}=$IMAGE --namespace=pv --kubeconfig=kubeconfig.yaml || true
-#
-#      - name: Apply manifests
-#        if: steps.changed.outputs.manifests_changed == 'true'
-#        continue-on-error: true
-#        run: |
-#          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
-#            echo "No kubeconfig; skipping manifest application"
-#            exit 0
-#          fi
-#          
-#          # Prefer consolidated manifests in k8s/base/<service>/, fall back to package-local k8s/
-#          # Skip secret manifests to avoid overwriting real cluster secrets with repository placeholders.
-#          if [ -d "k8s/base/${{ matrix.name }}" ]; then
-#            MANIFEST_DIR="k8s/base/${{ matrix.name }}"
-#            echo "Applying consolidated manifests from: $MANIFEST_DIR"
-#          elif [ -d "${{ matrix.path }}/k8s" ]; then
-#            MANIFEST_DIR="${{ matrix.path }}/k8s"
-#            echo "Applying package manifests from: $MANIFEST_DIR"
-#          else
-#            echo "No manifests found for ${{ matrix.name }}; skipping kubectl apply"
-#            exit 0
-#          fi
-#
-#          for manifest in "$MANIFEST_DIR"/*.yaml; do
-#            [ -e "$manifest" ] || continue
-#            filename=$(basename "$manifest")
-#            case "$filename" in
-#              *secret*.yaml|secrets.yaml)
-#                echo "Skipping secret manifest: $manifest"
-#                ;;
-#              *)
-#                echo "Applying manifest: $manifest"
-#                kubectl apply -f "$manifest" --kubeconfig=kubeconfig.yaml --namespace=pv || true
-#                ;;
-#            esac
-#          done
-#
-#      - name: Wait for rollout
-#        if: steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true'
-#        continue-on-error: true
-#        run: |
-#          if [ -z "${{ secrets.KUBECONFIG }}" ]; then
-#            echo "No kubeconfig; skip rollout wait"
-#            exit 0
-#          fi
-#          kubectl rollout status deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml --timeout=300s || true
-#
-#      - name: Cleanup
-#        if: always()
-#        run: rm -f kubeconfig.yaml || true
+      - name: Skip deploy when kubeconfig missing
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true') && steps.deploy.outputs.has_kubeconfig == 'false'
+        run: echo "KUBECONFIG secret not provided; skipping deploy for ${{ matrix.name }}"
+
+      - name: Prepare kubeconfig
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true') && steps.deploy.outputs.has_kubeconfig == 'true'
+        run: |
+          # Support either base64 kubeconfig or raw kubeconfig content.
+          if echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml 2>/dev/null; then
+            echo "Decoded base64 kubeconfig"
+          else
+            echo "Using raw kubeconfig content"
+            printf '%s' "${{ secrets.KUBECONFIG }}" > kubeconfig.yaml
+          fi
+          echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
+          kubectl --kubeconfig=kubeconfig.yaml version --client
+
+      - name: Create or update image pull secret
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true') && steps.deploy.outputs.has_kubeconfig == 'true'
+        run: |
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password="${{ secrets.EK_GITHUB_PAT }}" \
+            --namespace=pv \
+            --kubeconfig=kubeconfig.yaml \
+            --dry-run=client -o yaml | kubectl apply -f - --kubeconfig=kubeconfig.yaml
+
+      - name: Update deployment image
+        if: steps.changed.outputs.changed == 'true' && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
+        run: |
+          IMAGE=${{ matrix.image }}:${{ steps.vars.outputs.short_sha }}
+          echo "Updating deployment/${{ matrix.deployment }} container/${{ matrix.container }} to $IMAGE"
+          kubectl set image deployment/${{ matrix.deployment }} \
+            ${{ matrix.container }}=$IMAGE \
+            --namespace=pv \
+            --kubeconfig=kubeconfig.yaml
+
+      - name: Apply manifests
+        if: steps.changed.outputs.manifests_changed == 'true' && steps.deploy.outputs.has_kubeconfig == 'true'
+        run: |
+          MANIFEST_DIR="${{ matrix.manifests_dir }}"
+          if [ -d "$MANIFEST_DIR" ]; then
+            echo "Applying manifests from: $MANIFEST_DIR"
+          elif [ -d "${{ matrix.path }}/k8s" ]; then
+            MANIFEST_DIR="${{ matrix.path }}/k8s"
+            echo "Applying package manifests from: $MANIFEST_DIR"
+          else
+            echo "No manifests found for ${{ matrix.name }}; skipping kubectl apply"
+            exit 0
+          fi
+
+          found_any=false
+          for manifest in "$MANIFEST_DIR"/*.yaml; do
+            [ -e "$manifest" ] || continue
+            found_any=true
+            filename=$(basename "$manifest")
+            case "$filename" in
+              *secret*.yaml|secrets.yaml)
+                echo "Skipping secret manifest: $manifest"
+                ;;
+              *)
+                echo "Applying manifest: $manifest"
+                kubectl apply -f "$manifest" --kubeconfig=kubeconfig.yaml --namespace=pv
+                ;;
+            esac
+          done
+
+          if [ "$found_any" = false ]; then
+            echo "No YAML manifests in $MANIFEST_DIR"
+          fi
+
+      - name: Wait for rollout
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true') && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
+        run: |
+          if kubectl get deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml >/dev/null 2>&1; then
+            kubectl rollout status deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml --timeout=300s
+          else
+            echo "Deployment ${{ matrix.deployment }} not found in namespace pv; skipping rollout wait"
+          fi
+
+      - name: Report deployed image digest
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true') && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
+        run: |
+          echo "Deployment image (spec):"
+          kubectl get deployment/${{ matrix.deployment }} \
+            --namespace=pv \
+            --kubeconfig=kubeconfig.yaml \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="${{ matrix.container }}")].image}{"\n"}'
+
+          echo "Running pod image digests:"
+          kubectl get pods \
+            --namespace=pv \
+            --kubeconfig=kubeconfig.yaml \
+            -l app=${{ matrix.deployment }} \
+            -o 'custom-columns=NAME:.metadata.name,IMAGE_ID:.status.containerStatuses[0].imageID' \
+            --no-headers || true
+
+      - name: Cleanup
+        if: always()
+        run: rm -f kubeconfig.yaml || true

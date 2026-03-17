@@ -1,4 +1,4 @@
-<!-- force rebuilt to before load more meltdown -->
+<!-- force rebuilt to before load more meltdown 18/03/2026 -->
 <template>
   <div id="app" class="min-h-screen font-sans bg-gray-50">
 

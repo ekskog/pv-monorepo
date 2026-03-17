@@ -26,6 +26,8 @@ spec:
         envFrom:
         - configMapRef:
             name: pv-worker-config
+        - secretRef:
+          name: pv-api-secret
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfs-storage

@@ -23,12 +23,12 @@ module.exports = (temporalClient, config) => {
         const files = req.files;
         const batchId = nanoid();
 
-        debugBBulkApi(`Received upload request for folder "${folder}" with ${files.length} files.`);
-
         // 1. Immediate Validation (Synchronous)
         if (!files || files.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });
         }
+
+        debugBBulkApi(`Received upload request for folder "${folder}" with ${files.length} files.`);
 
         // 2. Respond immediately - connection closes for the user HERE
         res.status(202).json({
@@ -69,8 +69,13 @@ module.exports = (temporalClient, config) => {
                 // 4. Trigger Temporal
                 // Verify client exists before calling
                 if (temporalClient) {
+                        const taskQueue = config.temporal?.taskQueue;
+                        if (!taskQueue) {
+                            throw new Error('Temporal task queue is not configured');
+                        }
+
                         await temporalClient.workflow.start('processBatchImages', {
-                            taskQueue: config.temporal?.taskQueue || 'image-processing',
+                            taskQueue,
                             workflowId: `batch-${batchId}`,
                             args: [{ batchId, batchDir, images: imagePaths, folder }],
                         });
@@ -95,13 +100,33 @@ module.exports = (temporalClient, config) => {
             return res.status(503).json({ error: "Temporal client not available" });
         }
         try {
-            const handle = temporalClient.workflow.getHandle(req.params.workflowId);
+            const workflowId = req.params.workflowId;
+            const handle = temporalClient.workflow.getHandle(workflowId);
             const description = await handle.describe();
-            res.json({
-                workflowId: req.params.workflowId,
-                status: description.status.name,
-                startTime: description.startTime
-            });
+
+            const status = description.status.name;
+            const response = {
+                workflowId,
+                status,
+                startTime: description.startTime,
+                closeTime: description.closeTime || null,
+            };
+
+            // Return payload for closed workflows without blocking running ones.
+            if (status === 'COMPLETED') {
+                response.result = await handle.result();
+            } else if (['FAILED', 'TIMED_OUT', 'TERMINATED', 'CANCELED', 'CANCELLED'].includes(status)) {
+                try {
+                    await handle.result();
+                } catch (resultError) {
+                    response.error = {
+                        name: resultError?.name,
+                        message: resultError?.message || String(resultError),
+                    };
+                }
+            }
+
+            res.json(response);
         } catch (err) {
             res.status(404).json({ error: "Workflow not found", message: err.message });
         }

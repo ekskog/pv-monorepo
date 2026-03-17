@@ -25,7 +25,7 @@ const config = {
   // Temporal & Shared Storage
   temporal: {
     address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
-    taskQueue: 'image-processing',
+    taskQueue: process.env.TASK_QUEUE || process.env.TEMPORAL_TASK_QUEUE,
     nfsPath: process.env.NFS_PATH || '/nfs-storage', // The shared mount point
   },
 

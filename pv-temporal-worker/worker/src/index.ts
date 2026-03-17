@@ -4,9 +4,13 @@ import * as persistActivities from './activities/persistToMinio';
 
 const TEMPORAL_ADDRESS = process.env.TEMPORAL_ADDRESS ||
   'temporal-frontend.temporal.svc.cluster.local:7233';
-const TASK_QUEUE = 'image-processing';
+const TASK_QUEUE = process.env.TASK_QUEUE;
 
 async function run() {
+  if (!TASK_QUEUE) {
+    throw new Error('TASK_QUEUE environment variable is required');
+  }
+
   console.log('Starting Temporal worker...');
   console.log(`Temporal: ${TEMPORAL_ADDRESS}`);
   console.log(`Task queue: ${TASK_QUEUE}`);

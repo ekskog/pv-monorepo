@@ -51,7 +51,7 @@ async function initTemporal() {
     });
     temporalClient = new TemporalClient({
       connection,
-      namespace: 'photovaul',
+      namespace: 'pv',
     });
     debugServer("✓ Temporal Client initialized");
   } catch (err) {

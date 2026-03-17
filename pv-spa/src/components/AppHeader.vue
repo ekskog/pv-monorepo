@@ -79,6 +79,18 @@ const mobileSearchQuery = ref("");ible on md and below) -->
         >
           Settings
         </button>
+        <button
+          v-if="isAdmin"
+          class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+          @click="
+            () => {
+              showMobileMenu = false;
+              $emit('navigate', 'bulk-jobs');
+            }
+          "
+        >
+          Bulk Upload Jobs
+        </button>
 
         <!-- Auth Menu Section -->
         <div class="border-t border-gray-200 px-4 py-2">
@@ -170,6 +182,18 @@ const mobileSearchQuery = ref("");ible on md and below) -->
         @click="$emit('navigate', 'settings')"
       >
         <i class="fas fa-cog mr-2"></i> Settings
+      </button>
+      <button
+        v-if="isAdmin"
+        class="text-sm px-4 py-2 border-b-2 transition-all"
+        :class="
+          currentView === 'bulk-jobs'
+            ? 'text-blue-600 bg-blue-50 border-blue-600 font-semibold'
+            : 'text-gray-600 border-transparent hover:text-blue-500 hover:bg-blue-50'
+        "
+        @click="$emit('navigate', 'bulk-jobs')"
+      >
+        <i class="fas fa-list-check mr-2"></i> Bulk Jobs
       </button>
     </div>
 

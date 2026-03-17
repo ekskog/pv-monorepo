@@ -38,6 +38,7 @@
         v-if="isAuthenticated"
       />
       <Settings v-else-if="currentView === 'settings'" v-if="isAuthenticated" />
+      <BulkUploadJobs v-else-if="currentView === 'bulk-jobs'" v-if="isAuthenticated" />
     </main>
 
    
@@ -81,6 +82,7 @@ import AlbumViewer from "./components/AlbumViewer.vue";
 import Login from "./components/Login.vue";
 import UserManagement from "./components/UserManagement.vue";
 import Settings from "./components/Settings.vue";
+import BulkUploadJobs from "./components/BulkUploadJobs.vue";
 import Register from "./components/Register.vue";
 import ShareDialog from "./components/ShareDialog.vue";
 import SearchResults from "./components/SearchResults.vue";

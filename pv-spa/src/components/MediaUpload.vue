@@ -398,7 +398,8 @@ async function uploadFiles() {
     // Close dialog after successful upload
     emit('close', { 
       filesCount: selectedFiles.value.length,
-      jobId: pendingJobId.value 
+      jobId: pendingJobId.value,
+      mode: uploadType.value === 'bulk-photos' ? 'temporal-bulk' : 'legacy-sse'
     });
 
     // Show success modal - skip that for now

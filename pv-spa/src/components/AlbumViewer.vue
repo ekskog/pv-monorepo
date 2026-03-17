@@ -224,6 +224,7 @@ const processingNotifications = ref(false);
 const processingStatus = ref("");
 const processingJobId = ref(null);
 const pendingJobId = ref(null);
+const processingMode = ref(null);
 let sseService = null;
 let workflowStatusService = null;
 
@@ -299,12 +300,14 @@ const sortedLightboxVideos = computed(() => sortedVideos.value);
 
 const handleJobReady = (payload) => {
   if (payload?.workflowId) {
+    processingMode.value = 'temporal-bulk';
     pendingJobId.value = payload.workflowId;
     startWorkflowStatusListener(payload.workflowId);
     return;
   }
 
   if (payload?.jobId) {
+    processingMode.value = 'legacy-sse';
     pendingJobId.value = payload.jobId;
     processingJobId.value = payload.jobId;
     startSseProcessingListener(payload.jobId);
@@ -313,7 +316,7 @@ const handleJobReady = (payload) => {
 
 const handleUploadDialogClose = (payload) => {
   showUploadDialog.value = false;
-  if (payload?.filesCount) {
+  if (payload?.filesCount && payload?.mode !== 'temporal-bulk') {
     processingNotifications.value = true;
     processingStatus.value = `Waiting for job ID...`;
   }
@@ -678,8 +681,9 @@ const startWorkflowStatusListener = (workflowId) => {
   }
 
   processingJobId.value = workflowId;
-  processingNotifications.value = true;
-  processingStatus.value = 'Upload accepted. Starting background processing...';
+  // Temporal bulk mode is intentionally silent in the album UI for now.
+  processingNotifications.value = false;
+  processingStatus.value = '';
   processingProgress.value = 0;
 
   workflowStatusService?.stop();
@@ -698,6 +702,7 @@ const stopProcessingListener = () => {
   workflowStatusService?.stop();
   sseService = null;
   workflowStatusService = null;
+  processingMode.value = null;
   processingNotifications.value = false;
   processingStatus.value = "";
   processingJobId.value = null;
@@ -796,7 +801,7 @@ const handleWorkflowStatusUpdate = (payload) => {
 
   switch (status) {
     case 'RUNNING':
-      processingStatus.value = 'Processing uploaded photos in background...';
+      // Keep silent for temporal bulk mode.
       break;
 
     case 'COMPLETED': {
@@ -809,14 +814,15 @@ const handleWorkflowStatusUpdate = (payload) => {
       if (failed > 0) {
         message += `, ${failed} failed`;
       }
-      processingStatus.value = message;
+      // Silent mode: keep details in logs for now.
+      console.log('[ALBUM VIEWER DEBUG]', message);
       processingProgress.value = 100;
 
       if (pendingJobId.value) {
         emit('uploadComplete', pendingJobId.value);
       }
 
-      showProcessingCompleteNotification();
+      // Silent mode: no browser notification for temporal bulk.
       setTimeout(async () => {
         await refreshAlbum();
         stopProcessingListener();
@@ -830,19 +836,19 @@ const handleWorkflowStatusUpdate = (payload) => {
     case 'CANCELED':
     case 'CANCELLED': {
       const errorMessage = payload?.error?.message || 'Background processing failed.';
-      processingStatus.value = `Bulk processing failed (${status}): ${errorMessage}`;
+      console.warn(`[ALBUM VIEWER DEBUG] Bulk processing failed (${status}): ${errorMessage}`);
       setTimeout(() => stopProcessingListener(), 5000);
       break;
     }
 
     default:
-      processingStatus.value = `Processing status: ${status || 'UNKNOWN'}`;
+      // Keep silent for non-terminal status updates.
+      console.log(`[ALBUM VIEWER DEBUG] Processing status: ${status || 'UNKNOWN'}`);
   }
 };
 
 const handleWorkflowStatusError = (error) => {
   console.warn('[ALBUM VIEWER DEBUG] Workflow polling error:', error?.message || error);
-  processingStatus.value = `Checking processing status... (${error?.message || 'transient error'})`;
 };
 
 const showProcessingCompleteNotification = () => {

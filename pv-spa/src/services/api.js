@@ -260,6 +260,17 @@ async request(endpoint, options = {}) {
     return this.request(`/bulk/status/${encodeURIComponent(workflowId)}`);
   }
 
+  // List temporal bulk jobs in a date range
+  async listBulkJobs({ from = null, to = null, limit = 200 } = {}) {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (limit) params.set('limit', String(limit));
+
+    const query = params.toString();
+    return this.request(`/bulk/jobs${query ? `?${query}` : ''}`);
+  }
+
   // Single file upload with progress tracking
   async uploadSingleFile(bucketName, file, folderPath = "", onProgress = null) {
     const formData = new FormData();

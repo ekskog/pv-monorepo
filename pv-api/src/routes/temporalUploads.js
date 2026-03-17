@@ -14,6 +14,12 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 module.exports = (temporalClient, config) => {
 
+    const toIsoStringOrNull = (value) => {
+        if (!value) return null;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    };
+
     /**
      * POST /bulk/upload/:folder
      * Logic: Returns 202 instantly, processes NFS and Temporal in the background.
@@ -129,6 +135,100 @@ module.exports = (temporalClient, config) => {
             res.json(response);
         } catch (err) {
             res.status(404).json({ error: "Workflow not found", message: err.message });
+        }
+    });
+
+    /**
+     * List bulk workflow jobs within a date range.
+     * Query params:
+     * - from: ISO date string (inclusive)
+     * - to: ISO date string (inclusive)
+     * - limit: max number of returned jobs (default 200, max 1000)
+     */
+    router.get('/jobs', async (req, res) => {
+        if (!temporalClient) {
+            return res.status(503).json({ error: 'Temporal client not available' });
+        }
+
+        const fromIso = toIsoStringOrNull(req.query.from);
+        const toIso = toIsoStringOrNull(req.query.to);
+        const parsedLimit = parseInt(req.query.limit || '200', 10);
+        const limit = Number.isNaN(parsedLimit)
+            ? 200
+            : Math.min(Math.max(parsedLimit, 1), 1000);
+
+        if (req.query.from && !fromIso) {
+            return res.status(400).json({ error: 'Invalid from date. Use ISO-8601 format.' });
+        }
+
+        if (req.query.to && !toIso) {
+            return res.status(400).json({ error: 'Invalid to date. Use ISO-8601 format.' });
+        }
+
+        const fromDate = fromIso ? new Date(fromIso) : null;
+        const toDate = toIso ? new Date(toIso) : null;
+
+        try {
+            const jobs = [];
+            let scanned = 0;
+
+            // Iterate visibility results and filter to bulk jobs by workflow id prefix.
+            for await (const execution of temporalClient.workflow.list()) {
+                scanned += 1;
+
+                const workflowId = execution?.workflowId || execution?.execution?.workflowId;
+                if (!workflowId || !workflowId.startsWith('batch-')) {
+                    continue;
+                }
+
+                const startTimeRaw = execution?.startTime || execution?.executionTime || execution?.historyStartTime;
+                const closeTimeRaw = execution?.closeTime;
+                const startTime = startTimeRaw ? new Date(startTimeRaw) : null;
+
+                if (fromDate && startTime && startTime < fromDate) {
+                    continue;
+                }
+
+                if (toDate && startTime && startTime > toDate) {
+                    continue;
+                }
+
+                const status = execution?.status?.name || execution?.status || 'UNKNOWN';
+
+                jobs.push({
+                    workflowId,
+                    batchId: workflowId.replace(/^batch-/, ''),
+                    status,
+                    startTime: startTime ? startTime.toISOString() : null,
+                    closeTime: closeTimeRaw ? new Date(closeTimeRaw).toISOString() : null,
+                });
+
+                if (jobs.length >= limit) {
+                    break;
+                }
+            }
+
+            jobs.sort((a, b) => {
+                const aTime = a.startTime ? new Date(a.startTime).getTime() : 0;
+                const bTime = b.startTime ? new Date(b.startTime).getTime() : 0;
+                return bTime - aTime;
+            });
+
+            return res.json({
+                success: true,
+                from: fromIso,
+                to: toIso,
+                limit,
+                scanned,
+                count: jobs.length,
+                jobs,
+            });
+        } catch (error) {
+            console.error('[Bulk jobs] Failed to list workflows:', error);
+            return res.status(500).json({
+                error: 'Failed to list bulk jobs',
+                message: error?.message || String(error),
+            });
         }
     });
 

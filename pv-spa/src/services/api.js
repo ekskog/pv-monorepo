@@ -24,6 +24,23 @@ class ApiService {
     this.authService = authService;
   }
 
+  // Build bulk upload URL for a target folder/album
+  getBulkUploadUrl(folder) {
+    const API_BASE_URL = this.getApiBaseUrl();
+    return `${API_BASE_URL}/bulk/upload/${encodeURIComponent(folder)}`;
+  }
+
+  // Build bulk workflow status URL
+  getBulkWorkflowStatusUrl(workflowId) {
+    const API_BASE_URL = this.getApiBaseUrl();
+    return `${API_BASE_URL}/bulk/status/${encodeURIComponent(workflowId)}`;
+  }
+
+  // API convention: workflow id is derived from batch id
+  buildBulkWorkflowId(batchId) {
+    return `batch-${batchId}`;
+  }
+
   // Get authentication token
   getAuthToken() {
     return localStorage.getItem("hbvu_auth_token");
@@ -197,6 +214,50 @@ async request(endpoint, options = {}) {
     } catch (error) {
       throw error;
     }
+  }
+
+  // Temporal bulk image upload (202 Accepted + batchId)
+  async uploadBulkToTemporal(folder, files) {
+    const formData = new FormData();
+
+    if (Array.isArray(files)) {
+      files.forEach((file) => {
+        formData.append("images", file);
+      });
+    } else {
+      formData.append("images", files);
+    }
+
+    const url = this.getBulkUploadUrl(folder);
+    const headers = {};
+    const token = this.getAuthToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response
+        .json()
+        .catch(() => ({ message: `HTTP error! status: ${response.status}` }));
+      throw new Error(
+        errorData.message ||
+          errorData.error ||
+          `HTTP error! status: ${response.status}`
+      );
+    }
+
+    return await response.json();
+  }
+
+  // Temporal workflow status lookup
+  async getBulkWorkflowStatus(workflowId) {
+    return this.request(`/bulk/status/${encodeURIComponent(workflowId)}`);
   }
 
   // Single file upload with progress tracking

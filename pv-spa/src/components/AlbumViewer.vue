@@ -179,6 +179,7 @@ import { ref, onMounted, onUnmounted, computed, nextTick } from "vue";
 import apiService from "../services/api.js";
 import authService from "../services/auth.js";
 import SSEService from "../services/sseService.js";
+import WorkflowStatusService from "../services/workflowStatusService.js";
 
 import AlbumHeader from "./AlbumHeader.vue";
 import MediaUpload from "./MediaUpload.vue";
@@ -224,6 +225,7 @@ const processingStatus = ref("");
 const processingJobId = ref(null);
 const pendingJobId = ref(null);
 let sseService = null;
+let workflowStatusService = null;
 
 // NEW: Sort order state
 const sortOrder = ref('chronological'); // 'chronological' or 'reverse'
@@ -296,9 +298,16 @@ const sortedLightboxPhotos = computed(() => sortedPhotos.value);
 const sortedLightboxVideos = computed(() => sortedVideos.value);
 
 const handleJobReady = (payload) => {
+  if (payload?.workflowId) {
+    pendingJobId.value = payload.workflowId;
+    startWorkflowStatusListener(payload.workflowId);
+    return;
+  }
+
   if (payload?.jobId) {
+    pendingJobId.value = payload.jobId;
     processingJobId.value = payload.jobId;
-    startProcessingListener(payload.jobId);
+    startSseProcessingListener(payload.jobId);
   }
 };
 
@@ -639,8 +648,8 @@ const preloadVisibleImages = () => {
   imageElements.forEach((img) => observer.observe(img));
 };
 
-// SSE Integration
-const startProcessingListener = (jobId) => {
+// Legacy SSE integration
+const startSseProcessingListener = (jobId) => {
   // Prevent multiple SSE connections to the same job
   if (processingJobId.value === jobId && sseService) {
     console.log('[ALBUM VIEWER DEBUG] Already connected to job:', jobId);
@@ -661,9 +670,34 @@ const startProcessingListener = (jobId) => {
   console.log('[ALBUM VIEWER DEBUG] Started processing listener for job:', jobId);
 };
 
+// Temporal workflow polling integration
+const startWorkflowStatusListener = (workflowId) => {
+  if (processingJobId.value === workflowId && workflowStatusService) {
+    console.log('[ALBUM VIEWER DEBUG] Already polling workflow:', workflowId);
+    return;
+  }
+
+  processingJobId.value = workflowId;
+  processingNotifications.value = true;
+  processingStatus.value = 'Upload accepted. Starting background processing...';
+  processingProgress.value = 0;
+
+  workflowStatusService?.stop();
+  workflowStatusService = new WorkflowStatusService(
+    apiService,
+    workflowId,
+    handleWorkflowStatusUpdate,
+    handleWorkflowStatusError
+  );
+  workflowStatusService.start();
+  console.log('[ALBUM VIEWER DEBUG] Started workflow polling for:', workflowId);
+};
+
 const stopProcessingListener = () => {
   sseService?.stop();
+  workflowStatusService?.stop();
   sseService = null;
+  workflowStatusService = null;
   processingNotifications.value = false;
   processingStatus.value = "";
   processingJobId.value = null;
@@ -754,6 +788,61 @@ const handleProcessingUpdate = (data) => {
     default:
       processingStatus.value = data.message || "Processing photos...";
   }
+};
+
+const handleWorkflowStatusUpdate = (payload) => {
+  const status = payload?.status;
+  console.log('[ALBUM VIEWER DEBUG] Workflow status update:', status, payload);
+
+  switch (status) {
+    case 'RUNNING':
+      processingStatus.value = 'Processing uploaded photos in background...';
+      break;
+
+    case 'COMPLETED': {
+      const result = payload?.result || {};
+      const successful = result.successful ?? 0;
+      const failed = result.failed ?? 0;
+      const total = result.totalImages ?? successful + failed;
+
+      let message = `Bulk processing complete: ${successful}/${total} successful`;
+      if (failed > 0) {
+        message += `, ${failed} failed`;
+      }
+      processingStatus.value = message;
+      processingProgress.value = 100;
+
+      if (pendingJobId.value) {
+        emit('uploadComplete', pendingJobId.value);
+      }
+
+      showProcessingCompleteNotification();
+      setTimeout(async () => {
+        await refreshAlbum();
+        stopProcessingListener();
+      }, 2000);
+      break;
+    }
+
+    case 'FAILED':
+    case 'TIMED_OUT':
+    case 'TERMINATED':
+    case 'CANCELED':
+    case 'CANCELLED': {
+      const errorMessage = payload?.error?.message || 'Background processing failed.';
+      processingStatus.value = `Bulk processing failed (${status}): ${errorMessage}`;
+      setTimeout(() => stopProcessingListener(), 5000);
+      break;
+    }
+
+    default:
+      processingStatus.value = `Processing status: ${status || 'UNKNOWN'}`;
+  }
+};
+
+const handleWorkflowStatusError = (error) => {
+  console.warn('[ALBUM VIEWER DEBUG] Workflow polling error:', error?.message || error);
+  processingStatus.value = `Checking processing status... (${error?.message || 'transient error'})`;
 };
 
 const showProcessingCompleteNotification = () => {

@@ -1,3 +1,5 @@
+// force worker rebuild to fix temporal connection issues 18/03/2026
+ 
 import { NativeConnection, Worker } from '@temporalio/worker';
 import * as convertActivities from './activities/convertImage';
 import * as persistActivities from './activities/persistToMinio';

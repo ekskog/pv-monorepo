@@ -73,6 +73,10 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
           const metadataOk = await persistMetadataForImage(image.metadata, storageInfo.objectName);
           if (!metadataOk) {
             log.error(`Metadata update returned false for ${image.filename}`);
+          } else {
+            log.info(`Metadata persisted for ${image.filename}`, {
+              objectName: storageInfo.objectName,
+            });
           }
         } catch (metadataErr) {
           log.error(`Metadata update crashed for ${image.filename}`, { error: String(metadataErr) });

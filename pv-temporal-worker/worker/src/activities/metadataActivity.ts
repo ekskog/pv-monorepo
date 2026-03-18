@@ -42,8 +42,10 @@ export async function persistMetadataForImage(
   metadata: Record<string, any> | undefined,
   objectName: string
 ): Promise<boolean> {
+  console.log(`[METADATA-ACTIVITY] Start metadata persistence for ${objectName}`);
   const folderName = objectName.split('/')[0];
   if (!folderName || folderName === objectName) {
+    console.error(`[METADATA-ACTIVITY] Invalid objectName for metadata persistence: ${objectName}`);
     return false;
   }
 
@@ -82,6 +84,8 @@ export async function persistMetadataForImage(
       'Content-Type': 'application/json',
       'X-Amz-Meta-Type': 'album-metadata',
     });
+
+    console.log(`[METADATA-ACTIVITY] Metadata persisted for ${objectName} into ${jsonFileName}`);
 
     return true;
   } catch (error) {

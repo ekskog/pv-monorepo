@@ -211,6 +211,26 @@ jobs:
             --namespace=pv \
             --kubeconfig=kubeconfig.yaml
 
+      - name: Capture current deployment image
+        id: current_image
+        if: steps.changed.outputs.changed == 'false' && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
+        run: |
+          if kubectl get deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml >/dev/null 2>&1; then
+            CURRENT_IMAGE=$(kubectl get deployment/${{ matrix.deployment }} \
+              --namespace=pv \
+              --kubeconfig=kubeconfig.yaml \
+              -o jsonpath='{.spec.template.spec.containers[?(@.name=="${{ matrix.container }}")].image}')
+
+            if [ -n "$CURRENT_IMAGE" ]; then
+              echo "current_image=$CURRENT_IMAGE" >> "$GITHUB_OUTPUT"
+              echo "Captured current image for ${{ matrix.deployment }}: $CURRENT_IMAGE"
+            else
+              echo "No current image found for container '${{ matrix.container }}' in deployment/${{ matrix.deployment }}"
+            fi
+          else
+            echo "Deployment ${{ matrix.deployment }} not found in namespace pv; skipping current image capture"
+          fi
+
       - name: Apply manifests
         if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
         run: |
@@ -261,6 +281,16 @@ jobs:
         run: |
           IMAGE=${{ matrix.image }}:${{ steps.vars.outputs.short_sha }}
           echo "Re-applying deployment/${{ matrix.deployment }} container/${{ matrix.container }} to $IMAGE after manifest apply"
+          kubectl set image deployment/${{ matrix.deployment }} \
+            ${{ matrix.container }}=$IMAGE \
+            --namespace=pv \
+            --kubeconfig=kubeconfig.yaml
+
+      - name: Preserve image on non-code deploys
+        if: steps.changed.outputs.changed == 'false' && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != '' && steps.current_image.outputs.current_image != ''
+        run: |
+          IMAGE='${{ steps.current_image.outputs.current_image }}'
+          echo "Re-applying existing image for deployment/${{ matrix.deployment }} container/${{ matrix.container }}: $IMAGE"
           kubectl set image deployment/${{ matrix.deployment }} \
             ${{ matrix.container }}=$IMAGE \
             --namespace=pv \

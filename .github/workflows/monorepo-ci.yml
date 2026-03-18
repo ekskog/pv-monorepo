@@ -212,7 +212,7 @@ jobs:
             --kubeconfig=kubeconfig.yaml
 
       - name: Apply manifests
-        if: steps.changed.outputs.manifests_changed == 'true' && steps.deploy.outputs.has_kubeconfig == 'true'
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
         run: |
           MANIFEST_DIR="${{ matrix.manifests_dir }}"
           if [ -d "$MANIFEST_DIR" ]; then
@@ -230,6 +230,17 @@ jobs:
             [ -e "$manifest" ] || continue
             found_any=true
             filename=$(basename "$manifest")
+
+            # Dependency-only worker run: apply runtime config, but do not re-apply
+            # deployment spec because it is image-pinned and may roll back image set via CI.
+            if [ "${{ matrix.name }}" = "pv-temporal-worker" ] && \
+               [ "${{ steps.changed.outputs.changed }}" = "false" ] && \
+               [ "${{ steps.changed.outputs.api_related_changed }}" = "true" ] && \
+               [ "$filename" = "worker-deployment.yaml" ]; then
+              echo "Skipping worker deployment manifest on API dependency-triggered run: $manifest"
+              continue
+            fi
+
             case "$filename" in
               *secret*.yaml|secrets.yaml)
                 echo "Skipping secret manifest: $manifest"
@@ -243,6 +254,26 @@ jobs:
 
           if [ "$found_any" = false ]; then
             echo "No YAML manifests in $MANIFEST_DIR"
+          fi
+
+      - name: Verify Temporal task queue config
+        if: (matrix.name == 'pv-api' || matrix.name == 'pv-temporal-worker') && steps.deploy.outputs.has_kubeconfig == 'true' && (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true'))
+        run: |
+          EXPECTED_QUEUE="pv-image-processing"
+
+          if [ "${{ matrix.name }}" = "pv-api" ]; then
+            ACTUAL_QUEUE=$(kubectl get configmap pv-api-config --namespace=pv --kubeconfig=kubeconfig.yaml -o jsonpath='{.data.TASK_QUEUE}')
+            TARGET="configmap/pv-api-config"
+          else
+            ACTUAL_QUEUE=$(kubectl get configmap pv-worker-config --namespace=pv --kubeconfig=kubeconfig.yaml -o jsonpath='{.data.TASK_QUEUE}')
+            TARGET="configmap/pv-worker-config"
+          fi
+
+          echo "${TARGET} TASK_QUEUE=${ACTUAL_QUEUE}"
+
+          if [ "$ACTUAL_QUEUE" != "$EXPECTED_QUEUE" ]; then
+            echo "::error::${TARGET} has TASK_QUEUE='${ACTUAL_QUEUE}', expected '${EXPECTED_QUEUE}'"
+            exit 1
           fi
 
       - name: Rollout restart after secret/config updates

@@ -21,7 +21,7 @@ spec:
         - "mjolnir"
       containers:
       - name: worker
-        image: ghcr.io/ekskog/pv-worker:main-5e0bb1e
+        image: ghcr.io/ekskog/pv-worker:latest
         imagePullPolicy: Always
         env:
         - name: TEMPORAL_ADDRESS

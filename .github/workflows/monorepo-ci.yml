@@ -76,11 +76,12 @@ jobs:
             echo "manifests_changed=false" >> $GITHUB_OUTPUT
           fi
 
-          # Shared runtime inputs: pv-worker consumes pv-api-secret and shared API config values.
-          if echo "$CHANGED_FILES" | grep -E "^k8s/base/pv-api/(secrets|cm)\.yaml$" >/dev/null; then
-            echo "api_runtime_shared_changed=true" >> $GITHUB_OUTPUT
+          # Dependency trigger: pv-worker consumes shared API runtime inputs.
+          # Restart worker when API source or API k8s manifests change.
+          if echo "$CHANGED_FILES" | grep -E "^(pv-api/|k8s/base/pv-api/)" >/dev/null; then
+            echo "api_related_changed=true" >> $GITHUB_OUTPUT
           else
-            echo "api_runtime_shared_changed=false" >> $GITHUB_OUTPUT
+            echo "api_related_changed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Set short SHA
@@ -92,7 +93,7 @@ jobs:
 
       - name: Check deploy prerequisites
         id: deploy
-        if: steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_runtime_shared_changed == 'true')
+        if: steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')
         env:
           KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG }}
         run: |
@@ -103,7 +104,7 @@ jobs:
           fi
 
       - name: Skip if no changes
-        if: steps.changed.outputs.changed == 'false' && !(matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_runtime_shared_changed == 'true')
+        if: steps.changed.outputs.changed == 'false' && !(matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')
         run: echo "No changes for ${{ matrix.name }}; skipping build"
 
       - name: Set up Docker Buildx
@@ -129,11 +130,11 @@ jobs:
             ${{ matrix.image }}:latest
 
       - name: Skip deploy when kubeconfig missing
-        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_runtime_shared_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'false'
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'false'
         run: echo "KUBECONFIG secret not provided; skipping deploy for ${{ matrix.name }}"
 
       - name: Prepare kubeconfig
-        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_runtime_shared_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
         run: |
           # Support either base64 kubeconfig or raw kubeconfig content.
           if echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml 2>/dev/null; then
@@ -146,7 +147,7 @@ jobs:
           kubectl --kubeconfig=kubeconfig.yaml version --client
 
       - name: Create or update image pull secret
-        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_runtime_shared_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
         run: |
           kubectl create secret docker-registry ghcr-secret \
             --docker-server=ghcr.io \
@@ -245,7 +246,7 @@ jobs:
           fi
 
       - name: Rollout restart after secret/config updates
-        if: steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != '' && (steps.changed.outputs.manifests_changed == 'true' || steps.runtime_app_secret.outcome == 'success' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_runtime_shared_changed == 'true'))
+        if: steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != '' && (steps.changed.outputs.manifests_changed == 'true' || steps.runtime_app_secret.outcome == 'success' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true'))
         run: |
           if kubectl get deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml >/dev/null 2>&1; then
             echo "Restarting deployment/${{ matrix.deployment }} to reload Secret/ConfigMap changes"
@@ -255,7 +256,7 @@ jobs:
           fi
 
       - name: Wait for rollout
-        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_runtime_shared_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
         run: |
           if kubectl get deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml >/dev/null 2>&1; then
             kubectl rollout status deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml --timeout=300s
@@ -264,7 +265,7 @@ jobs:
           fi
 
       - name: Report deployed image digest
-        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_runtime_shared_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
         run: |
           echo "Deployment image (spec):"
           kubectl get deployment/${{ matrix.deployment }} \

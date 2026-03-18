@@ -23,11 +23,20 @@ spec:
       - name: worker
         image: ghcr.io/ekskog/pv-worker:main-5e0bb1e
         imagePullPolicy: Always
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: pv-api-secret
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: pv-api-secret
+              key: MINIO_SECRET_KEY
         envFrom:
         - configMapRef:
             name: pv-worker-config
-        - secretRef:
-            name: pv-api-secret
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfs-storage

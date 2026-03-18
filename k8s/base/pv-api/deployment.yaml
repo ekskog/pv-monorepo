@@ -32,19 +32,7 @@ spec:
         ports:
         - containerPort: 3000
           name: http
-        # Explicit mapping for Cloudflare token (server-side only)
-        env:
-        - name: CLOUDFLARE_API_TOKEN
-          valueFrom:
-          secretKeyRef:
-            name: pv-api-secret
-            key: CLOUDFLARE_API_TOKEN
-        - name: AVIF_CONVERTER_URL
-          valueFrom:
-            configMapKeyRef:
-              name: pv-api-config
-              key: AVIF_CONVERTER_URL
-        # Load remaining config and secrets
+        # Load config and secrets
         envFrom:
         - configMapRef:
             name: pv-api-config

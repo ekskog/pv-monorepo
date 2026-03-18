@@ -15,6 +15,7 @@ data:
   # UI Configuration
   APP_TITLE: "EKSKOG PHOTOS"
   APP_DESCRIPTION: "Secure Photo Gallery"
+  API_URL: "https://vault-api.ekskog.net"
   
   # Feature Flags
   ENABLE_USER_MANAGEMENT: "true"

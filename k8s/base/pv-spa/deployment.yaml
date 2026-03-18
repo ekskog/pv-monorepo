@@ -32,25 +32,10 @@ spec:
         ports:
         - containerPort: 80
           name: http
-        env:
-        # API Configuration
-        - name: API_URL
-          value: "https://vault-api.ekskog.net"
-        # External Services
-        - name: TURNSTILE_SITE_KEY
-          value: "0x4AAAAAABxuiZHUrM0VTikw"
-        # Debug Configuration
-        - name: DEBUG_MODE
-          value: "false"  # Set to "true" or "ekskog:*" to enable debug logging
-        - name: LOG_LEVEL
-          value: "info"  # Debug pattern when debugging is enabled
-        # Load non-sensitive config from ConfigMap
+        # Load runtime config from ConfigMap
         envFrom:
         - configMapRef:
             name: pv-spa-config
-        # Load sensitive config from Secret
-        - secretRef:
-            name: pv-frontend-secrets
         resources:
           requests:
             memory: "64Mi"

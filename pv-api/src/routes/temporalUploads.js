@@ -9,10 +9,12 @@ const { nanoid } = require("nanoid");
 const mime = require('mime-types');
 const fs = require('fs').promises;
 const path = require('path');
+const MetadataService = require("../services/metadata-service");
 // Use memory storage to handle the manual write to NFS
 const upload = multer({ storage: multer.memoryStorage() });
 
 module.exports = (temporalClient, config) => {
+    const metadataService = new MetadataService(null);
 
     const toIsoStringOrNull = (value) => {
         if (!value) return null;
@@ -58,6 +60,7 @@ module.exports = (temporalClient, config) => {
                 // Map and write the files to the NFS
                 const imagePaths = await Promise.all(
                     files.map(async (file) => {
+                        const extractedMetadata = await metadataService.extractEssentialMetadata(file.buffer, file.originalname);
                         const filePath = path.join(batchDir, file.originalname);
                         await fs.writeFile(filePath, file.buffer);
                         
@@ -66,6 +69,7 @@ module.exports = (temporalClient, config) => {
                             filename: file.originalname,
                             path: filePath,
                             contentType: detectedType || file.mimetype,
+                            metadata: extractedMetadata,
                         };
                     })
                 );

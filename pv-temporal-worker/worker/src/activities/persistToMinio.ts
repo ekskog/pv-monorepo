@@ -31,7 +31,7 @@ export async function persistToMinio(
   avifPath: string,
   filename: string,
   albumName: string
-): Promise<{ minioPath: string }> {
+): Promise<{ minioPath: string; objectName: string }> {
   // Use path.parse to get the name without the extension (e.g., "003.JPG" -> "003")
   const fileNameWithoutExt = path.parse(filename).name;
   const objectName = `${albumName}/${fileNameWithoutExt}.avif`;
@@ -49,7 +49,8 @@ export async function persistToMinio(
 
     console.log(`✓ Persisted to MinIO: ${BULK_UPLOAD_BUCKET}/${objectName}`);
     return {
-      minioPath: `${BULK_UPLOAD_BUCKET}/${objectName}`
+      minioPath: `${BULK_UPLOAD_BUCKET}/${objectName}`,
+      objectName,
     };
   } catch (error) {
     console.error(`Failed MinIO upload:`, error);

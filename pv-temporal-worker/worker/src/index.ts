@@ -3,6 +3,7 @@
 import { NativeConnection, Worker } from '@temporalio/worker';
 import * as convertActivities from './activities/convertImage';
 import * as persistActivities from './activities/persistToMinio';
+import * as metadataActivities from './activities/metadataActivity';
 
 const TEMPORAL_ADDRESS = process.env.TEMPORAL_ADDRESS ||
   'temporal-frontend.temporal.svc.cluster.local:7233';
@@ -39,6 +40,7 @@ async function run() {
     activities: {
       ...convertActivities,
       ...persistActivities,
+      ...metadataActivities,
     },
   });
 

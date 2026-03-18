@@ -132,6 +132,25 @@
         </div>
       </div>
 
+      <!-- Client Preferences -->
+      <div class="px-8 py-6 border-b border-gray-200 dark:border-gray-700">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <i class="fas fa-sliders-h text-indigo-500 mr-2"></i> Client Preferences
+        </h2>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Monitor non-bulk uploads</div>
+            <div class="text-xs text-gray-500">When enabled, the album UI will show real-time processing notifications for legacy (non-bulk) uploads via SSE.</div>
+          </div>
+          <div>
+            <label class="inline-flex items-center">
+              <input type="checkbox" class="form-checkbox h-5 w-5" v-model="monitorNonBulkUploads" />
+            </label>
+          </div>
+        </div>
+      </div>
+
       <!-- Actions -->
       <div class="px-8 py-6 bg-gray-50 dark:bg-gray-800 flex flex-wrap gap-4">
         <button
@@ -185,6 +204,7 @@
 import { ref, computed, onMounted, reactive } from "vue";
 import authService from "../services/auth.js";
 import configService from "../services/config.js";
+import userSettings from "../services/userSettings.js";
 
 
 // Reactive state
@@ -200,6 +220,15 @@ const isSaving = ref(false);
 const connectionTestResult = ref(null);
 const requiresReload = ref(false);
 
+// user settings controls
+const monitorNonBulkUploads = ref(true);
+
+const loadUserSettings = () => {
+  const s = userSettings.getAll();
+  monitorNonBulkUploads.value = !!s.monitorNonBulkUploads;
+  originalUserSettings.value = { ...s };
+};
+
 const users = ref([]);
 const selectedUserId = ref("");
 const newPassword = ref("");
@@ -207,10 +236,13 @@ const isLoadingUsers = ref(false);
 const isResettingPassword = ref(false);
 const passwordResetMessage = ref(null);
 const isOpen = ref(false);
+const originalUserSettings = ref({});
 
 // Computed
 const hasChanges = computed(() => {
-  return formData.apiUrl !== originalConfig.value.apiUrl;
+  if (formData.apiUrl !== originalConfig.value.apiUrl) return true;
+  if ((originalUserSettings.value.monitorNonBulkUploads ?? true) !== monitorNonBulkUploads.value) return true;
+  return false;
 });
 
 const selectedUser = computed(() => {
@@ -318,7 +350,8 @@ const saveSettings = async () => {
       }
 
       loadCurrentConfig();
-
+      // refresh stored originals
+      loadUserSettings();
       // Clear message after 3 seconds
       setTimeout(() => {
         message.value = null;
@@ -345,6 +378,13 @@ const resetToDefaults = () => {
   ) {
     configService.reset();
     loadCurrentConfig();
+
+      // Save user settings (independent of runtime config)
+      try {
+        userSettings.set('monitorNonBulkUploads', !!monitorNonBulkUploads.value);
+      } catch (e) {
+        console.warn('Failed to persist user setting monitorNonBulkUploads', e);
+      }
     requiresReload.value = true;
 
     message.value = {
@@ -440,6 +480,7 @@ const reloadApplication = () => {
 // Lifecycle
 onMounted(() => {
   loadCurrentConfig();
+  loadUserSettings();
   fetchUsers(); // Proactively fetch users when component loads
 });
 </script>

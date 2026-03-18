@@ -180,6 +180,7 @@ import apiService from "../services/api.js";
 import authService from "../services/auth.js";
 import SSEService from "../services/sseService.js";
 import WorkflowStatusService from "../services/workflowStatusService.js";
+import userSettings from "../services/userSettings.js";
 
 import AlbumHeader from "./AlbumHeader.vue";
 import MediaUpload from "./MediaUpload.vue";
@@ -227,6 +228,7 @@ const pendingJobId = ref(null);
 const processingMode = ref(null);
 let sseService = null;
 let workflowStatusService = null;
+let _userSettingsUnsub = null;
 
 // NEW: Sort order state
 const sortOrder = ref('chronological'); // 'chronological' or 'reverse'
@@ -317,8 +319,14 @@ const handleJobReady = (payload) => {
 const handleUploadDialogClose = (payload) => {
   showUploadDialog.value = false;
   if (payload?.filesCount && payload?.mode !== 'temporal-bulk') {
-    processingNotifications.value = true;
-    processingStatus.value = `Waiting for job ID...`;
+    const monitor = userSettings.get('monitorNonBulkUploads');
+    if (monitor) {
+      processingNotifications.value = true;
+      processingStatus.value = `Waiting for job ID...`;
+    } else {
+      processingNotifications.value = false;
+      processingStatus.value = '';
+    }
   }
 };
 
@@ -653,6 +661,17 @@ const preloadVisibleImages = () => {
 
 // Legacy SSE integration
 const startSseProcessingListener = (jobId) => {
+  // Respect user preference: do not monitor legacy (non-bulk) uploads if disabled
+  const monitor = userSettings.get('monitorNonBulkUploads');
+  if (!monitor) {
+    console.log('[ALBUM VIEWER DEBUG] SSE monitoring disabled by user preference, skipping SSE for job:', jobId);
+    // still set job id so other logic can reference it, but do not open SSE or show notifications
+    processingJobId.value = jobId;
+    pendingJobId.value = jobId;
+    processingNotifications.value = false;
+    processingStatus.value = '';
+    return;
+  }
   // Prevent multiple SSE connections to the same job
   if (processingJobId.value === jobId && sseService) {
     console.log('[ALBUM VIEWER DEBUG] Already connected to job:', jobId);
@@ -863,6 +882,13 @@ const showProcessingCompleteNotification = () => {
 onMounted(async () => {
   console.log("[AlbumViewer] Mounted with album:", props.albumName);
   await loadPhotos();
+  // Subscribe to user settings changes so we can stop SSE if user disables monitoring
+  _userSettingsUnsub = userSettings.onChange((newSettings) => {
+    if (!newSettings.monitorNonBulkUploads && processingMode.value === 'legacy-sse') {
+      console.log('[ALBUM VIEWER DEBUG] User disabled SSE monitoring; stopping SSE listener.');
+      stopProcessingListener();
+    }
+  });
   setTimeout(() => {
     startAggressivePreloading();
     preloadVisibleImages();
@@ -879,5 +905,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopProcessingListener();
+  if (typeof _userSettingsUnsub === 'function') {
+    try { _userSettingsUnsub(); } catch (e) {}
+    _userSettingsUnsub = null;
+  }
 });
 </script>

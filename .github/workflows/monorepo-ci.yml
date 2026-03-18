@@ -256,6 +256,16 @@ jobs:
             echo "No YAML manifests in $MANIFEST_DIR"
           fi
 
+      - name: Re-assert deployment image after manifests
+        if: steps.changed.outputs.changed == 'true' && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
+        run: |
+          IMAGE=${{ matrix.image }}:${{ steps.vars.outputs.short_sha }}
+          echo "Re-applying deployment/${{ matrix.deployment }} container/${{ matrix.container }} to $IMAGE after manifest apply"
+          kubectl set image deployment/${{ matrix.deployment }} \
+            ${{ matrix.container }}=$IMAGE \
+            --namespace=pv \
+            --kubeconfig=kubeconfig.yaml
+
       - name: Verify Temporal task queue config
         if: (matrix.name == 'pv-api' || matrix.name == 'pv-temporal-worker') && steps.deploy.outputs.has_kubeconfig == 'true' && (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true'))
         run: |

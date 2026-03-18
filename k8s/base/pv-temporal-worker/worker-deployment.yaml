@@ -24,6 +24,21 @@ spec:
         image: ghcr.io/ekskog/pv-worker:main-5e0bb1e
         imagePullPolicy: Always
         env:
+        - name: TEMPORAL_ADDRESS
+          valueFrom:
+            configMapKeyRef:
+              name: pv-worker-config
+              key: TEMPORAL_ADDRESS
+        - name: TEMPORAL_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: pv-worker-config
+              key: TEMPORAL_NAMESPACE
+        - name: TASK_QUEUE
+          valueFrom:
+            configMapKeyRef:
+              name: pv-worker-config
+              key: TASK_QUEUE
         - name: MINIO_ACCESS_KEY
           valueFrom:
             secretKeyRef:

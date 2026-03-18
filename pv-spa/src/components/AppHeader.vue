@@ -307,7 +307,10 @@ const mobileSearchQuery = ref("");
 const HEALTH_CHECK_INTERVAL_MS = 60000;
 let healthCheckTimer = null;
 
-const isAdmin = computed(() => props.currentUser?.role === "admin");
+const ADMIN_ROLES = ["admin", "administrator", "owner", "superadmin"];
+const isAdmin = computed(() =>
+  ADMIN_ROLES.includes(String(props.currentUser?.role || "").toLowerCase())
+);
 
 const statusDotClass = computed(() => {
   if (healthLevel.value === "healthy") return "bg-green-500";

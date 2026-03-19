@@ -6,6 +6,15 @@ class ConfigService {
     // Read from window.__ENV__ (injected by Docker at runtime)
     // Fallback to import.meta.env for local Vite development/testing
     const env = window.__ENV__ || {};
+    // Allow persisted overrides from localStorage for development
+    const persisted = (() => {
+      try {
+        const raw = localStorage.getItem('pv_config');
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return {};
+      }
+    })();
 
     this.config = {
       apiUrl: env.API_URL || import.meta.env.VITE_API_URL || 'https://vault-api.ekskog.net',
@@ -21,6 +30,9 @@ class ConfigService {
       logLevel: env.LOG_LEVEL || import.meta.env.VITE_LOG_LEVEL || 'info',
       turnstileSiteKey: env.TURNSTILE_SITE_KEY || import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
     }
+
+    // Apply persisted overrides
+    Object.assign(this.config, persisted || {});
 
     console.log('🔧 Config: Loaded from runtime configuration:', this.config)
   }
@@ -38,6 +50,40 @@ class ConfigService {
   // Get API URL
   getApiUrl() {
     return this.config.apiUrl
+  }
+
+  // Persist runtime config to localStorage (dev-only)
+  saveConfig(changes = {}) {
+    try {
+      this.config = { ...this.config, ...changes };
+      localStorage.setItem('pv_config', JSON.stringify(this.config));
+      return true;
+    } catch (e) {
+      console.warn('Failed to persist config:', e.message);
+      return false;
+    }
+  }
+
+  // Reset persisted config to defaults (does not reload)
+  reset() {
+    try {
+      localStorage.removeItem('pv_config');
+      // Rebuild config from environment
+      const env = window.__ENV__ || {};
+      this.config.apiUrl = env.API_URL || import.meta.env.VITE_API_URL || 'https://vault-api.ekskog.net';
+      this.config.appTitle = env.APP_TITLE || import.meta.env.VITE_APP_TITLE || 'EKSKOG PHOTOS';
+      this.config.appDescription = env.APP_DESCRIPTION || import.meta.env.VITE_APP_DESCRIPTION || 'Secure Photo Gallery';
+      this.config.turnstileSiteKey = env.TURNSTILE_SITE_KEY || import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
+      return true;
+    } catch (e) {
+      console.warn('Failed to reset config:', e.message);
+      return false;
+    }
+  }
+
+  // Convenience accessor used in a few places in the SPA
+  getToken() {
+    return localStorage.getItem('hbvu_auth_token');
   }
 
   // Test API connection

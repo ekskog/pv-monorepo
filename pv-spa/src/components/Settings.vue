@@ -337,6 +337,16 @@ const saveSettings = async () => {
       apiUrl: formData.apiUrl,
     });
 
+      // Persist user-level settings (monitorNonBulkUploads)
+      try {
+        const userSaved = userSettings.set('monitorNonBulkUploads', !!monitorNonBulkUploads.value);
+        if (!userSaved) {
+          throw new Error('Failed to persist user settings');
+        }
+      } catch (e) {
+        console.warn('Could not save user settings:', e.message || e);
+      }
+
     if (success) {
       message.value = {
         type: "success",

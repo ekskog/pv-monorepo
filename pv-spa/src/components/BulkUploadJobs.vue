@@ -72,12 +72,11 @@
             <option value="RUNNING">Running</option>
             <option value="ALL">All</option>
             <option
-              v-for="status in availableStatuses"
-              :key="status"
-              v-if="status !== 'RUNNING'"
-              :value="status"
+              v-for="statusItem in otherStatuses"
+              :key="statusItem"
+              :value="statusItem"
             >
-              {{ status }}
+              {{ statusItem }}
             </option>
           </select>
         </div>
@@ -181,6 +180,8 @@ const availableStatuses = computed(() => {
   return Array.from(statuses).sort();
 });
 
+const otherStatuses = computed(() => availableStatuses.value.filter(s => s !== 'RUNNING'));
+
 const filteredJobs = computed(() => {
   if (statusFilter.value === 'ALL') {
     return jobs.value;
@@ -201,6 +202,12 @@ const toLocalDateTimeInput = (date) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+const setLast12Hours = () => {
+  const now = new Date();
+  const from = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+  fromInput.value = toLocalDateTimeInput(from);
+  toInput.value = toLocalDateTimeInput(now);
+};
 
 const loadJobs = async () => {
   loading.value = true;
@@ -273,7 +280,7 @@ const statusClass = (status) => {
 };
 
 onMounted(() => {
-  setLast24Hours();
+  setLast12Hours();
   loadJobs();
   // Poll progress periodically for running jobs
   progressInterval = setInterval(() => {

@@ -274,7 +274,30 @@ async request(endpoint, options = {}) {
   // Poll for the latest progress for a bulk batch (dev-friendly)
   async getBulkJobProgress(batchId) {
     if (!batchId) throw new Error('batchId is required');
-    return this.request(`/bulk/progress/${encodeURIComponent(batchId)}`);
+
+    // Use a lightweight fetch here so we can quietly handle 404 (no progress yet)
+    const API_BASE_URL = this.getApiBaseUrl();
+    const url = `${API_BASE_URL}/bulk/progress/${encodeURIComponent(batchId)}`;
+
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    const token = this.getAuthToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    try {
+      const resp = await fetch(url, { headers });
+      if (resp.status === 404) return null;
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => null);
+        throw new Error(err?.message || `HTTP error! status: ${resp.status}`);
+      }
+      return await resp.json();
+    } catch (err) {
+      // Network or other error; don't spam console for expected missing-progress cases
+      console.debug('getBulkJobProgress error:', err?.message || err);
+      return null;
+    }
   }
 
   // Single file upload with progress tracking

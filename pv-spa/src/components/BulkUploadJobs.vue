@@ -50,12 +50,6 @@
           >
             Refresh
           </button>
-          <button
-            class="bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 w-full sm:w-auto"
-            @click="setLast24Hours"
-          >
-            Last 24h
-          </button>
         </div>
       </div>
     </div>
@@ -207,12 +201,6 @@ const toLocalDateTimeInput = (date) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-const setLast24Hours = () => {
-  const now = new Date();
-  const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  fromInput.value = toLocalDateTimeInput(from);
-  toInput.value = toLocalDateTimeInput(now);
-};
 
 const loadJobs = async () => {
   loading.value = true;

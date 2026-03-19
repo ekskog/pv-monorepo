@@ -371,8 +371,9 @@ app.get("/processing-status/:jobId", (req, res) => {
 app.get('/bulk/progress/:batchId', (req, res) => {
   const batchId = req.params.batchId;
   try {
+    // If no progress is available yet, return success with null progress
     if (!progressStore.has(batchId)) {
-      return res.status(404).json({ success: false, message: 'No progress available' });
+      return res.json({ success: true, batchId, progress: null });
     }
 
     const progress = progressStore.get(batchId);

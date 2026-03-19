@@ -92,6 +92,8 @@ const temporalRoutes = require("./routes/temporalUploads"); // Added this for th
 // Store active SSE connections and pending jobs by job ID
 const sseConnections = new Map();
 const pendingJobs = new Map();
+// In-memory progress store for dev UI polling
+const progressStore = new Map();
 
 const sendSSEEvent = (jobId, eventType, data = {}) => {
   const connection = sseConnections.get(jobId);
@@ -114,14 +116,31 @@ const sendSSEEvent = (jobId, eventType, data = {}) => {
     connection.write('');
     debugSSE(`[server.js (72)] Event "${eventType}" sent to job ${jobId}`);
 
+    // Persist progress updates for polling clients
+    persistProgress(jobId, data);
+
     if (eventType === "complete") {
       // Send final message and end the stream
       connection.end();
       sseConnections.delete(jobId);
+      // Remove stored progress when job completes
+      progressStore.delete(jobId);
     }
   } catch (error) {
     debugSSE(`[server.js (97)] Error sending to job ${jobId}: ${error.message}`);
     sseConnections.delete(jobId);
+  }
+};
+
+// Persist latest progress updates so the UI can poll for progress
+// Note: data is user-provided from background process; only store when progress is present
+const persistProgress = (jobId, data = {}) => {
+  if (data && data.progress) {
+    try {
+      progressStore.set(jobId, data.progress);
+    } catch (e) {
+      console.warn(`[server] Failed to persist progress for ${jobId}:`, e.message);
+    }
   }
 };
 
@@ -342,6 +361,26 @@ app.get("/processing-status/:jobId", (req, res) => {
     debugSSE(`[server.js (252)] SSE connection error for job ${jobId}:`, error.message);
     sseConnections.delete(jobId);
   });
+});
+
+/**
+ * Lightweight progress polling endpoint for UI
+ * GET /bulk/progress/:batchId
+ * returns { success: true, batchId, progress }
+ */
+app.get('/bulk/progress/:batchId', (req, res) => {
+  const batchId = req.params.batchId;
+  try {
+    if (!progressStore.has(batchId)) {
+      return res.status(404).json({ success: false, message: 'No progress available' });
+    }
+
+    const progress = progressStore.get(batchId);
+    return res.json({ success: true, batchId, progress });
+  } catch (error) {
+    console.error('[Progress] Error fetching progress for', batchId, error.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch progress' });
+  }
 });
 
 // Start server with database initialization

@@ -19,7 +19,7 @@
           class="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:border-blue-500 hover:text-blue-500 transition"
           @click="triggerUpload('photos')"
         >
-          <i class="fas fa-image text-base"></i> Photos
+          <i class="fas fa-image text-base"></i> Photos (max 10)
         </button>
         <button
           class="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:border-blue-500 hover:text-blue-500 transition"
@@ -35,7 +35,7 @@
           @click="triggerUpload('bulk-photos')"
           title="Temporal bulk upload for large photo batches (no 10-file limit)."
         >
-          <i class="fas fa-layer-group text-base"></i> Bulk Photos
+          <i class="fas fa-layer-group text-base"></i> Bulk Photos (max 500 MB)
           <i
             class="fas fa-circle-info text-xs text-emerald-600"
             title="Uses Temporal background processing. Best for large image batches."

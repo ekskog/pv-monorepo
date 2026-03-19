@@ -271,6 +271,12 @@ async request(endpoint, options = {}) {
     return this.request(`/bulk/jobs${query ? `?${query}` : ''}`);
   }
 
+  // Poll for the latest progress for a bulk batch (dev-friendly)
+  async getBulkJobProgress(batchId) {
+    if (!batchId) throw new Error('batchId is required');
+    return this.request(`/bulk/progress/${encodeURIComponent(batchId)}`);
+  }
+
   // Single file upload with progress tracking
   async uploadSingleFile(bucketName, file, folderPath = "", onProgress = null) {
     const formData = new FormData();

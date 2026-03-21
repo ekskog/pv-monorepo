@@ -30,9 +30,19 @@ class MetadataService {
         const pythonUrl = process.env.METADATA_SERVICE_URL || 'http://pv-metadata-service:80/extract';
         const form = new FormData();
         // Use server-side form-data append signature that accepts Buffer
-        form.append('file', buffer, { filename: filename || 'upload' });
+        // Provide a contentType for the part so the Python parser knows the file type
+        form.append('file', buffer, { filename: filename || 'upload', contentType: 'application/octet-stream' });
 
-        fetch(pythonUrl, { method: 'POST', body: form, headers: form.getHeaders() })
+        // Build headers including Content-Length when available (helps some parsers)
+        const headers = form.getHeaders();
+        try {
+          const len = form.getLengthSync();
+          if (len && !isNaN(len)) headers['Content-Length'] = len;
+        } catch (e) {
+          // getLengthSync can fail for complex streams; ignore and proceed without it
+        }
+
+        fetch(pythonUrl, { method: 'POST', body: form, headers })
           .then(async (res) => {
             const text = await res.text();
             let body = text;

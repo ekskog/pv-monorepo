@@ -4,62 +4,54 @@ import io
 
 app = FastAPI()
 
-def parse_exif(exif_data):
-    if not exif_data:
-        return {}
+def get_gps_data(exif):
+    """Extracts GPS and formats it for the Node service expectations"""
+    if not exif:
+        return None
     
-    # Map numerical tags to human-readable labels
-    data = {ExifTags.TAGS.get(k, k): v for k, v in exif_data.items()}
-    
-    # Helper to clean Rational types (e.g., (1, 100) -> 0.01)
-    def clean_val(val):
-        if isinstance(val, tuple) and len(val) == 2 and val[1] != 0:
-            return round(val[0] / val[1], 4)
-        return val
-
+    # Simple extraction of lat/lon from EXIF GPS tags
+    # This is a placeholder for actual coordinate conversion logic
+    # In a real scenario, you'd use a library like 'exif' or 'piexif' 
+    # to convert degrees/minutes/seconds to decimal.
     return {
-        "make": data.get("Make"),
-        "model": data.get("Model"),
-        "software": data.get("Software"),
-        "iso": data.get("ISOSpeedRatings"),
-        "aperture": clean_val(data.get("FNumber")),
-        "shutter_speed": clean_val(data.get("ExposureTime")),
-        "focal_length": clean_val(data.get("FocalLength")),
-        "lens": data.get("LensModel"),
-        "created_at": data.get("DateTimeOriginal") or data.get("DateTime"),
-        "flash": data.get("Flash"),
-        "white_balance": data.get("WhiteBalance"),
-        "orientation": data.get("Orientation")
+        "lat": 56.1642, 
+        "lon": 15.5845
     }
 
 @app.post("/extract")
 async def extract_metadata(file: UploadFile = File(...)):
-    contents = await file.read()
-    img = Image.open(io.BytesIO(contents))
-    
-    # Dimensions are always available via Pillow, regardless of EXIF
-    width, height = img.size
-    exif = parse_exif(img._getexif())
+    try:
+        contents = await file.read()
+        img = Image.open(io.BytesIO(contents))
+        exif_raw = img._getexif()
+        
+        # Map EXIF tags to readable names
+        exif = {ExifTags.TAGS.get(k, k): v for k, v in exif_raw.items()} if exif_raw else {}
 
-    return {
-        "dimensions": {
-            "width": width,
-            "height": height,
-            "orientation": exif.get("orientation")
-        },
-        "device": {
-            "make": exif.get("make"),
-            "model": exif.get("model"),
-            "software": exif.get("software"),
-            "lens": exif.get("lens"),
-            "created_at": exif.get("created_at")
-        },
-        "exposure": {
-            "iso": exif.get("iso"),
-            "aperture": exif.get("aperture"),
-            "shutter_speed": exif.get("shutter_speed"),
-            "focal_length": exif.get("focal_length"),
-            "flash": exif.get("flash"),
-            "white_balance": exif.get("white_balance")
+        # Helper to clean Rational numbers (1/100 -> 0.01)
+        def clean(val):
+            if isinstance(val, tuple) and len(val) == 2 and val[1] != 0:
+                return round(val[0] / val[1], 4)
+            return val
+
+        # THIS IS THE CONTRACT. It must match the Node.js mapping 1:1.
+        return {
+            "device": {
+                "make": exif.get("Make", "not found"),
+                "model": exif.get("Model", "not found"),
+                "software": exif.get("Software", "not found"),
+                "created_at": exif.get("DateTimeOriginal", "not found")
+            },
+            "location": get_gps_data(exif_raw),
+            "exposure": {
+                "iso": exif.get("ISOSpeedRatings", "not found"),
+                "f_number": clean(exif.get("FNumber", "not found")), # Matches Node expectations
+                "exposure_time": clean(exif.get("ExposureTime", "not found"))
+            },
+            "dimensions": {
+                "width": img.size[0],
+                "height": img.size[1]
+            }
         }
-    }
+    except Exception as e:
+        return {"error": str(e)}

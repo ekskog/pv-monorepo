@@ -145,7 +145,7 @@
           </div>
           <div>
             <label class="inline-flex items-center">
-              <input type="checkbox" class="form-checkbox h-5 w-5" v-model="monitorNonBulkUploads" />
+              <input type="checkbox" class="form-checkbox h-5 w-5" v-model="monitor" />
             </label>
           </div>
         </div>
@@ -205,6 +205,7 @@ import { ref, computed, onMounted, reactive } from "vue";
 import authService from "../services/auth.js";
 import configService from "../services/config.js";
 import userSettings from "../services/userSettings.js";
+import { useUserSettings } from "../composables/useUserSettings";
 
 
 // Reactive state
@@ -220,12 +221,15 @@ const isSaving = ref(false);
 const connectionTestResult = ref(null);
 const requiresReload = ref(false);
 
-// user settings controls
-const monitorNonBulkUploads = ref(true);
+// user settings controls (reactive wrapper)
+const { settings, setMonitorNonBulkUploads } = useUserSettings();
+const monitor = computed({
+  get: () => settings.monitorNonBulkUploads,
+  set: (v) => setMonitorNonBulkUploads(v),
+});
 
 const loadUserSettings = () => {
   const s = userSettings.getAll();
-  monitorNonBulkUploads.value = !!s.monitorNonBulkUploads;
   originalUserSettings.value = { ...s };
 };
 
@@ -241,7 +245,7 @@ const originalUserSettings = ref({});
 // Computed
 const hasChanges = computed(() => {
   if (formData.apiUrl !== originalConfig.value.apiUrl) return true;
-  if ((originalUserSettings.value.monitorNonBulkUploads ?? true) !== monitorNonBulkUploads.value) return true;
+  if ((originalUserSettings.value.monitorNonBulkUploads ?? false) !== monitor.value) return true;
   return false;
 });
 
@@ -339,10 +343,7 @@ const saveSettings = async () => {
 
       // Persist user-level settings (monitorNonBulkUploads)
       try {
-        const userSaved = userSettings.set('monitorNonBulkUploads', !!monitorNonBulkUploads.value);
-        if (!userSaved) {
-          throw new Error('Failed to persist user settings');
-        }
+        setMonitorNonBulkUploads(!!monitor.value);
       } catch (e) {
         console.warn('Could not save user settings:', e.message || e);
       }
@@ -391,7 +392,7 @@ const resetToDefaults = () => {
 
       // Save user settings (independent of runtime config)
       try {
-        userSettings.set('monitorNonBulkUploads', !!monitorNonBulkUploads.value);
+        setMonitorNonBulkUploads(!!monitor.value);
       } catch (e) {
         console.warn('Failed to persist user setting monitorNonBulkUploads', e);
       }

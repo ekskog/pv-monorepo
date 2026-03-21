@@ -2,7 +2,7 @@
 const STORAGE_KEY = 'pv_user_settings_v1';
 
 const DEFAULTS = {
-  monitorNonBulkUploads: true,
+  monitorNonBulkUploads: false,
 };
 
 function load() {

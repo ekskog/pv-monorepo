@@ -1,57 +1,61 @@
-from fastapi import FastAPI, UploadFile, File
-from PIL import Image, ExifTags
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
+from pillow_heif import register_heif_opener
 import io
 
-app = FastAPI()
+register_heif_opener()
+app = FastAPI(title="HEIC Metadata Microservice")
 
-def get_gps_data(exif):
-    """Extracts GPS and formats it for the Node service expectations"""
-    if not exif:
-        return None
-    
-    # Simple extraction of lat/lon from EXIF GPS tags
-    # This is a placeholder for actual coordinate conversion logic
-    # In a real scenario, you'd use a library like 'exif' or 'piexif' 
-    # to convert degrees/minutes/seconds to decimal.
-    return {
-        "lat": 56.1642, 
-        "lon": 15.5845
-    }
+def dms_to_decimal(coords, ref):
+    if not coords or not ref: return None
+    try:
+        d, m, s = [float(x) for x in coords]
+        decimal = d + (m / 60.0) + (s / 3600.0)
+        if ref in ['S', 'W']: decimal = -decimal
+        return round(decimal, 6)
+    except: return None
 
 @app.post("/extract")
 async def extract_metadata(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(('.heic', '.heif')):
+        raise HTTPException(status_code=400, detail="Only HEIC/HEIF files supported")
+
     try:
-        contents = await file.read()
-        img = Image.open(io.BytesIO(contents))
-        exif_raw = img._getexif()
+        content = await file.read()
+        img = Image.open(io.BytesIO(content))
+        exif_raw = img.getexif()
         
-        # Map EXIF tags to readable names
-        exif = {ExifTags.TAGS.get(k, k): v for k, v in exif_raw.items()} if exif_raw else {}
+        if not exif_raw:
+            return {"filename": file.filename, "metadata": {}}
 
-        # Helper to clean Rational numbers (1/100 -> 0.01)
-        def clean(val):
-            if isinstance(val, tuple) and len(val) == 2 and val[1] != 0:
-                return round(val[0] / val[1], 4)
-            return val
+        # Extract sub-IFDs
+        exif_details = exif_raw.get_ifd(0x8769)
+        gps_details = exif_raw.get_ifd(0x8825)
 
-        # THIS IS THE CONTRACT. It must match the Node.js mapping 1:1.
-        return {
+        # Build clean response
+        payload = {
             "device": {
-                "make": exif.get("Make", "not found"),
-                "model": exif.get("Model", "not found"),
-                "software": exif.get("Software", "not found"),
-                "created_at": exif.get("DateTimeOriginal", "not found")
+                "make": exif_raw.get(271),
+                "model": exif_raw.get(272),
+                "software": exif_raw.get(305)
             },
-            "location": get_gps_data(exif_raw),
             "exposure": {
-                "iso": exif.get("ISOSpeedRatings", "not found"),
-                "f_number": clean(exif.get("FNumber", "not found")), # Matches Node expectations
-                "exposure_time": clean(exif.get("ExposureTime", "not found"))
+                "iso": exif_details.get(34855) if exif_details else None,
+                "f_number": str(exif_details.get(33437)) if exif_details else None,
+                "exposure_time": str(exif_details.get(33434)) if exif_details else None,
+                "lens": exif_details.get(42036) if exif_details else None
             },
-            "dimensions": {
-                "width": img.size[0],
-                "height": img.size[1]
-            }
+            "location": None
         }
+
+        if gps_details:
+            lat = dms_to_decimal(gps_details.get(2), gps_details.get(1))
+            lon = dms_to_decimal(gps_details.get(4), gps_details.get(3))
+            if lat and lon:
+                payload["location"] = {"lat": lat, "lon": lon, "alt": float(gps_details.get(6, 0))}
+
+        return payload
+
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))

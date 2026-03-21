@@ -42,16 +42,30 @@ class MetadataService {
           // getLengthSync can fail for complex streams; ignore and proceed without it
         }
 
-        fetch(pythonUrl, { method: 'POST', body: form, headers })
-          .then(async (res) => {
-            const text = await res.text();
-            let body = text;
-            try { body = JSON.parse(text); } catch (e) { /* keep raw text */ }
-            console.log('[metadata-proxy] called', pythonUrl, 'status=', res.status, 'response=', body);
-          })
-          .catch((err) => {
-            console.error('[metadata-proxy] error calling python service:', err && err.message ? err.message : err);
-          });
+          fetch(pythonUrl, { method: 'POST', body: form, headers, timeout: 10000 })
+            .then(async (res) => {
+              const text = await res.text();
+              let body = text;
+              try { body = JSON.parse(text); } catch (e) { /* keep raw text */ }
+              if (!res.ok) {
+                console.error('[metadata-proxy] python service returned non-OK status', { url: pythonUrl, status: res.status, statusText: res.statusText, body });
+              } else {
+                console.log('[metadata-proxy] called', pythonUrl, 'status=', res.status, 'response=', body);
+              }
+            })
+            .catch((err) => {
+              // Log detailed error info to help diagnose network/parse failures
+              try {
+                console.error('[metadata-proxy] error calling python service:', {
+                  name: err && err.name,
+                  message: err && err.message,
+                  code: err && err.code,
+                  stack: err && err.stack,
+                });
+              } catch (logErr) {
+                console.error('[metadata-proxy] error calling python service (failed to serialize error):', err);
+              }
+            });
       } catch (e) {
         console.error('[metadata-proxy] failed to start proxy request:', e && e.message ? e.message : e);
       }

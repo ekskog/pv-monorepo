@@ -3,6 +3,11 @@ from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from pillow_heif import register_heif_opener
 import io
+import logging
+
+# Simple logger that prints to stdout/stderr so container logs capture errors
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("pv-metadata")
 
 register_heif_opener()
 app = FastAPI(title="HEIC Metadata Microservice")
@@ -25,7 +30,7 @@ async def extract_metadata(file: UploadFile = File(...)):
         content = await file.read()
         img = Image.open(io.BytesIO(content))
         exif_raw = img.getexif()
-        
+
         if not exif_raw:
             return {"filename": file.filename, "metadata": {}}
 
@@ -58,4 +63,14 @@ async def extract_metadata(file: UploadFile = File(...)):
         return payload
 
     except Exception as e:
+        # Log full exception with traceback for diagnostics
+        try:
+            logger.exception("Error extracting metadata for %s", getattr(file, 'filename', '<unknown>'))
+        except Exception:
+            # Fallback to printing if logger fails for any reason
+            import traceback
+
+            print("Error extracting metadata:", str(e))
+            traceback.print_exc()
+        # Surface a concise error to the client
         raise HTTPException(status_code=500, detail=str(e))

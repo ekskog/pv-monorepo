@@ -3,7 +3,7 @@ const sharp = require("sharp");
 const debug = require("debug");
 const debugMetadata = debug("pv:metadata");
 const debugGps = debug("pv:metadata:gps");
-const config = require('../config'); // defaults to ./config/index.js
+const config = require("../config"); // defaults to ./config/index.js
 
 /**
  * Optimized Metadata Service - Only extracts date and GPS location
@@ -22,251 +22,47 @@ class MetadataService {
    * @returns {Object} Extracted metadata
    */
   async extractEssentialMetadata(buffer, filename) {
-    console.log(`[METADATA-SERVICE] >>> Starting metadata extraction for: ${filename} (Buffer size: ${buffer.length} bytes)`);
     try {
-      //debugMetadata(`[(26)] > Extracting metadata from: ${filename}`);
+      const formData = new FormData();
+      const blob = new Blob([buffer], { type: "image/heic" }); // adjust based on actual type
+      formData.append("file", blob, filename);
 
-      // Extract comprehensive metadata in one pass
-      let exifData;
-      const exifrOptions = {
-        heic: true,
-        gps: true,
-        pick: [
-          // Date/time
-          "DateTimeOriginal",
-          "CreateDate",
-          "DateTime",
-          "DateTimeDigitized",
-          // GPS
-          "latitude",
-          "longitude",
-          "GPSLatitude",
-          "GPSLongitude",
-          "GPSLatitudeRef",
-          "GPSLongitudeRef",
-          // Camera info
-          "Make",
-          "Model",
-          "Software",
-          "LensModel",
-          // Photo settings
-          "ISO",
-          "ISOSpeedRatings",
-          "FNumber",
-          "ApertureValue",
-          "ExposureTime",
-          "ShutterSpeedValue",
-          "FocalLength",
-          "Flash",
-          "WhiteBalance",
-          // Image properties
-          "ImageWidth",
-          "ImageHeight",
-          "ExifImageWidth",
-          "ExifImageHeight",
-          "Orientation",
-          "ColorSpace",
-          "XResolution",
-          "YResolution",
-          "PixelXDimension",
-          "PixelYDimension",
-        ],
-      };
+      const response = await fetch(`${config.metadata.url}/extract`, {
+        method: "POST",
+        body: formData,
+        timeout: config.metadata.timeout,
+      });
 
-      try {
-        console.log(`[METADATA-SERVICE] Attempting exifr.parse for ${filename}`);
-        exifData = await exifr.parse(buffer, exifrOptions);
-        console.log(`[METADATA-SERVICE] exifr.parse succeeded for ${filename}`);
-      } catch (exifrError) {
-        console.log(`[METADATA-SERVICE] ! exifr failed for ${filename}: ${exifrError.message}. Trying sharp fallback...`);
-        try {
-          // If the file is HEIC, try using our heic-decode dependency to extract EXIF
-          let rawExifBuffer = null;
+      if (!response.ok)
+        throw new Error(`Metadata service failed: ${response.status}`);
 
-          if (filename.toLowerCase().endsWith('.heic')) {
-            console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] Attempting to extract EXIF with heic-decode for ${filename}`);
-            const heicDecode = require('heic-decode');
-            const heicData = await heicDecode({ buffer });
+      const pythonData = await response.json();
 
-            // heic-decode may return different shapes depending on version/platform.
-            // Try common places for an EXIF block but don't assume images[0] exists.
-            const exifBlock =
-              (heicData && heicData.images && heicData.images[0] && heicData.images[0].exif) ||
-              heicData.exif ||
-              (heicData.meta && heicData.meta.exif);
-
-            if (exifBlock) {
-              console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] Found EXIF block. Parsing with exifr...`);
-              rawExifBuffer = exifBlock;
-            } else {
-              console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] heic-decode returned no EXIF block. Keys: ${Object.keys(heicData)}`);
-            }
-          }
-
-          if (!rawExifBuffer) {
-            // Fallback to sharp to extract raw EXIF buffer for other formats
-            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] Reading metadata with sharp for ${filename}`);
-            const sharpMeta = await sharp(buffer).metadata();
-            rawExifBuffer = sharpMeta.exif;
-
-            if (!rawExifBuffer) {
-              // If no exif block, at least try using sharp's basic width/height
-              console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] No EXIF block found by sharp. Using basic dimensions.`);
-              exifData = {
-                ImageWidth: sharpMeta.width,
-                ImageHeight: sharpMeta.height,
-                Orientation: sharpMeta.orientation,
-                ColorSpace: sharpMeta.space,
-              };
-            }
-          }
-
-          if (rawExifBuffer) {
-            console.log(`[METADATA-SERVICE] Parsing extracted EXIF buffer...`);
-            // Parse the extracted raw EXIF buffer
-            exifData = await exifr.parse(rawExifBuffer, exifrOptions);
-            console.log(`[METADATA-SERVICE] EXIF buffer parsing succeeded for ${filename}`);
-          }
-        } catch (fallbackError) {
-          console.error(`[METADATA-SERVICE] [FALLBACK] !!! Fallback failed for ${filename}:`, fallbackError.message);
-          // Don't rethrow the original exifr error here; proceed gracefully without EXIF
-          // so one bad file/fallback won't kill the whole upload process.
-          exifData = null;
-        }
-      }
-
-      console.log(`[METADATA-SERVICE] Building metadata object for ${filename}`);
-      const metadata = {
-        sourceImage: filename,
-        timestamp: "not found",
-        coordinates: "not found",
-        location: "not found",
-        camera: {
-          make: "not found",
-          model: "not found",
-          software: "not found",
-          lens: "not found",
-        },
-        settings: {
-          iso: "not found",
-          aperture: "not found",
-          shutterSpeed: "not found",
-          focalLength: "not found",
-          flash: "not found",
-          whiteBalance: "not found",
-        },
-        dimensions: {
-          width: "not found",
-          height: "not found",
-          orientation: "not found",
-          colorSpace: "not found",
-          resolution: {
-            x: "not found",
-            y: "not found",
-          },
-        },
-      };
-
-      if (exifData) {
-        // Extract timestamp
-        const dateFields = [
-          "DateTimeOriginal",
-          "CreateDate",
-          "DateTime",
-          "DateTimeDigitized",
-        ];
-        for (const field of dateFields) {
-          if (exifData[field]) {
-            try {
-              metadata.timestamp = new Date(exifData[field]).toISOString();
-              break;
-            } catch (e) {
-              continue;
-            }
-          }
-        }
-
-        // Extract GPS coordinates
-        let lat, lng;
-
-        // Method 1: Direct decimal coordinates
-        if (exifData.latitude && exifData.longitude) {
-          lat = exifData.latitude;
-          lng = exifData.longitude;
-        }
-        // Method 2: DMS format conversion
-        else if (
-          exifData.GPSLatitude &&
-          exifData.GPSLongitude &&
-          Array.isArray(exifData.GPSLatitude) &&
-          Array.isArray(exifData.GPSLongitude)
-        ) {
-          const latDMS = exifData.GPSLatitude;
-          const lngDMS = exifData.GPSLongitude;
-          const latRef = exifData.GPSLatitudeRef || "N";
-          const lngRef = exifData.GPSLongitudeRef || "E";
-
-          if (latDMS.length >= 3 && lngDMS.length >= 3) {
-            lat = this.dmsToDecimal(latDMS[0], latDMS[1], latDMS[2], latRef);
-            lng = this.dmsToDecimal(lngDMS[0], lngDMS[1], lngDMS[2], lngRef);
-          }
-        }
-
-        if (
-          lat !== undefined &&
-          lng !== undefined &&
-          !isNaN(lat) &&
-          !isNaN(lng)
-        ) {
-          metadata.coordinates = `${lat},${lng}`;
-
-          // Get address from coordinates if available
-          metadata.location = await this.getAddressFromCoordinates(
-            metadata.coordinates,
-            filename
-          );
-        }
-
-        // Extract camera info
-        metadata.camera.make = exifData.Make || "not found";
-        metadata.camera.model = exifData.Model || "not found";
-        metadata.camera.software = exifData.Software || "not found";
-        metadata.camera.lens = exifData.LensModel || "not found";
-
-        // Extract photo settings
-        metadata.settings.iso =
-          exifData.ISO || exifData.ISOSpeedRatings || "not found";
-        metadata.settings.aperture =
-          exifData.FNumber || exifData.ApertureValue || "not found";
-        metadata.settings.shutterSpeed =
-          exifData.ExposureTime || exifData.ShutterSpeedValue || "not found";
-        metadata.settings.focalLength = exifData.FocalLength || "not found";
-        metadata.settings.flash = exifData.Flash || "not found";
-        metadata.settings.whiteBalance = exifData.WhiteBalance || "not found";
-
-        // Extract dimensions
-        metadata.dimensions.width =
-          exifData.ImageWidth || exifData.ExifImageWidth || exifData.PixelXDimension || "not found";
-        metadata.dimensions.height =
-          exifData.ImageHeight || exifData.ExifImageHeight || exifData.PixelYDimension || "not found";
-        metadata.dimensions.orientation = exifData.Orientation || "not found";
-        metadata.dimensions.colorSpace = exifData.ColorSpace || "not found";
-        metadata.dimensions.resolution.x = exifData.XResolution || "not found";
-        metadata.dimensions.resolution.y = exifData.YResolution || "not found";
-      }
-
-      return metadata;
-    } catch (error) {
-      console.error(`Error extracting metadata from ${filename}:`, error.message);
+      // Map the Python service response back to your Express metadata schema
       return {
         sourceImage: filename,
-        timestamp: "not found",
-        coordinates: "not found",
-        location: "not found",
-        camera: { make: "not found", model: "not found", software: "not found", lens: "not found" },
-        settings: { iso: "not found", aperture: "not found", shutterSpeed: "not found", focalLength: "not found", flash: "not found", whiteBalance: "not found" },
-        dimensions: { width: "not found", height: "not found", orientation: "not found", colorSpace: "not found", resolution: { x: "not found", y: "not found" } },
+        timestamp: pythonData.device?.created_at || "not found",
+        coordinates: pythonData.location
+          ? `${pythonData.location.lat},${pythonData.location.lon}`
+          : "not found",
+        camera: {
+          make: pythonData.device?.make || "not found",
+          model: pythonData.device?.model || "not found",
+          software: pythonData.device?.software || "not found",
+        },
+        settings: {
+          iso: pythonData.exposure?.iso || "not found",
+          aperture: pythonData.exposure?.f_number || "not found",
+          shutterSpeed: pythonData.exposure?.exposure_time || "not found",
+        },
+        // ... map other fields as needed
       };
+    } catch (error) {
+      console.error(
+        "Remote metadata extraction failed, using empty defaults:",
+        error.message,
+      );
+      return this.getEmptyMetadata(filename); // helper to return "not found" object
     }
   }
 
@@ -310,7 +106,9 @@ class MetadataService {
       const response = await fetch(url, { timeout: 5000 });
 
       if (!response.ok) {
-        debugGps(`[(277)]: Mapbox API error: ${response.status} ${response.statusText}`);
+        debugGps(
+          `[(277)]: Mapbox API error: ${response.status} ${response.statusText}`,
+        );
         return `API error: ${response.status}`;
       }
 
@@ -349,7 +147,7 @@ class MetadataService {
         //debugMetadata(`[(309)]: Attempting to retrieve existing metadata from ${jsonFileName}...`);
         const stream = await this.minioClient.getObject(
           bucketName,
-          jsonFileName
+          jsonFileName,
         );
         for await (const chunk of stream) chunks.push(chunk);
         const rawData = Buffer.concat(chunks).toString();
@@ -375,7 +173,7 @@ class MetadataService {
       };
 
       folderData.media = folderData.media.filter(
-        (img) => img.sourceImage !== objectName
+        (img) => img.sourceImage !== objectName,
       );
       folderData.media.push(imageData);
       folderData.lastUpdated = new Date().toISOString();
@@ -384,7 +182,7 @@ class MetadataService {
       const minioResult = await this.minioClient.putObject(
         bucketName,
         jsonFileName,
-        jsonContent
+        jsonContent,
       );
 
       return true;

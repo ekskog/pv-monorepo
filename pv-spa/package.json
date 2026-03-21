@@ -15,6 +15,7 @@
     "vue-tailwind-datepicker": "^1.7.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.11",
     "@vitejs/plugin-vue": "^5.2.3",
     "autoprefixer": "^10.4.21",

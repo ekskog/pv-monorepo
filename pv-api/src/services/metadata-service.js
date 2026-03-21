@@ -88,11 +88,18 @@ class MetadataService {
             const heicDecode = require('heic-decode');
             const heicData = await heicDecode({ buffer });
 
-            // Extract EXIF data if present in the HEIC blocks
-            const exifBlock = heicData.images[0]?.exif;
+            // heic-decode may return different shapes depending on version/platform.
+            // Try common places for an EXIF block but don't assume images[0] exists.
+            const exifBlock =
+              (heicData && heicData.images && heicData.images[0] && heicData.images[0].exif) ||
+              heicData.exif ||
+              (heicData.meta && heicData.meta.exif);
+
             if (exifBlock) {
               console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] Found EXIF block. Parsing with exifr...`);
               rawExifBuffer = exifBlock;
+            } else {
+              console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] heic-decode returned no EXIF block. Keys: ${Object.keys(heicData)}`);
             }
           }
 
@@ -122,7 +129,9 @@ class MetadataService {
           }
         } catch (fallbackError) {
           console.error(`[METADATA-SERVICE] [FALLBACK] !!! Fallback failed for ${filename}:`, fallbackError.message);
-          throw exifrError; // Throw original error if fallback also fails
+          // Don't rethrow the original exifr error here; proceed gracefully without EXIF
+          // so one bad file/fallback won't kill the whole upload process.
+          exifData = null;
         }
       }
 

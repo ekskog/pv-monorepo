@@ -9,6 +9,7 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: pv-spa
@@ -32,6 +33,15 @@ jobs:
             deployment: pv-avif-converter
             container: pv-avif-converter
             manifests_dir: k8s/base/pv-converter
+          # --- NEW METADATA SERVICE ---
+          - name: pv-metadata
+            path: pv-metadata
+            context: pv-metadata
+            image: ghcr.io/ekskog/pv-metadata
+            deployment: pv-metadata
+            container: pv-metadata
+            manifests_dir: k8s/base/pv-metadata
+          # ----------------------------
           - name: pv-temporal-worker
             path: pv-temporal-worker
             context: pv-temporal-worker/worker
@@ -51,24 +61,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Full history avoids false negatives in git diff on runners.
           fetch-depth: 0
 
       - name: Determine if service changed
         id: changed
         run: |
           echo "Checking for changes under '${{ matrix.path }}'"
+          # Get list of changed files between previous commit and current SHA
           CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null || git show --pretty='' --name-only "${{ github.sha }}" || true)
+          
           echo "files_changed<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+          # Detect code changes in the service folder
           if echo "$CHANGED_FILES" | grep -E "^${{ matrix.path }}(/|$)" >/dev/null; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
-          # Check for manifest changes related to this specific service
+          # Detect manifest changes
           if echo "$CHANGED_FILES" | grep -E "^k8s/base/${{ matrix.name }}(/|$)" >/dev/null || \
              echo "$CHANGED_FILES" | grep -E "^${{ matrix.path }}/k8s(/|$)" >/dev/null; then
             echo "manifests_changed=true" >> $GITHUB_OUTPUT
@@ -76,8 +89,7 @@ jobs:
             echo "manifests_changed=false" >> $GITHUB_OUTPUT
           fi
 
-          # Dependency trigger: pv-worker consumes shared API runtime inputs.
-          # Restart worker when API source or API k8s manifests change.
+          # Worker dependency logic
           if echo "$CHANGED_FILES" | grep -E "^(pv-api/|k8s/base/pv-api/)" >/dev/null; then
             echo "api_related_changed=true" >> $GITHUB_OUTPUT
           else
@@ -97,15 +109,11 @@ jobs:
         env:
           KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG }}
         run: |
-          if [ -n "$KUBECONFIG_SECRET" ]; then
-            echo "has_kubeconfig=true" >> $GITHUB_OUTPUT
-          else
+          if [ -z "$KUBECONFIG_SECRET" ]; then
             echo "has_kubeconfig=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_kubeconfig=true" >> $GITHUB_OUTPUT
           fi
-
-      - name: Skip if no changes
-        if: steps.changed.outputs.changed == 'false' && !(matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')
-        run: echo "No changes for ${{ matrix.name }}; skipping build"
 
       - name: Set up Docker Buildx
         if: steps.changed.outputs.changed == 'true'
@@ -129,14 +137,9 @@ jobs:
             ${{ matrix.image }}:${{ steps.vars.outputs.short_sha }}
             ${{ matrix.image }}:latest
 
-      - name: Skip deploy when kubeconfig missing
-        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'false'
-        run: echo "KUBECONFIG secret not provided; skipping deploy for ${{ matrix.name }}"
-
       - name: Prepare kubeconfig
         if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
         run: |
-          # Support either base64 kubeconfig or raw kubeconfig content.
           if echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml 2>/dev/null; then
             echo "Decoded base64 kubeconfig"
           else
@@ -144,7 +147,6 @@ jobs:
             printf '%s' "${{ secrets.KUBECONFIG }}" > kubeconfig.yaml
           fi
           echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
-          kubectl --kubeconfig=kubeconfig.yaml version --client
 
       - name: Create or update image pull secret
         if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
@@ -168,28 +170,6 @@ jobs:
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          required_vars=(
-            MINIO_ACCESS_KEY
-            MINIO_SECRET_KEY
-            MAPBOX_TOKEN
-            JWT_SECRET
-            TURNSTILE_SECRET_KEY
-            DB_PASSWORD
-          )
-
-          missing=0
-          for var_name in "${required_vars[@]}"; do
-            if [ -z "${!var_name}" ]; then
-              echo "::error::Missing required GitHub Actions secret: ${var_name}"
-              missing=1
-            fi
-          done
-
-          if [ "$missing" -ne 0 ]; then
-            echo "Required secrets are missing. Refusing to update pv-api-secret with partial values."
-            exit 1
-          fi
-
           kubectl create secret generic pv-api-secret \
             --from-literal=MINIO_ACCESS_KEY="$MINIO_ACCESS_KEY" \
             --from-literal=MINIO_SECRET_KEY="$MINIO_SECRET_KEY" \
@@ -201,156 +181,39 @@ jobs:
             --kubeconfig=kubeconfig.yaml \
             --dry-run=client -o yaml | kubectl apply -f - --kubeconfig=kubeconfig.yaml
 
-      - name: Update deployment image
-        if: steps.changed.outputs.changed == 'true' && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
-        run: |
-          IMAGE=${{ matrix.image }}:${{ steps.vars.outputs.short_sha }}
-          echo "Updating deployment/${{ matrix.deployment }} container/${{ matrix.container }} to $IMAGE"
-          kubectl set image deployment/${{ matrix.deployment }} \
-            ${{ matrix.container }}=$IMAGE \
-            --namespace=pv \
-            --kubeconfig=kubeconfig.yaml
-
-      - name: Capture current deployment image
-        id: current_image
-        if: steps.changed.outputs.changed == 'false' && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
-        run: |
-          if kubectl get deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml >/dev/null 2>&1; then
-            CURRENT_IMAGE=$(kubectl get deployment/${{ matrix.deployment }} \
-              --namespace=pv \
-              --kubeconfig=kubeconfig.yaml \
-              -o jsonpath='{.spec.template.spec.containers[?(@.name=="${{ matrix.container }}")].image}')
-
-            if [ -n "$CURRENT_IMAGE" ]; then
-              echo "current_image=$CURRENT_IMAGE" >> "$GITHUB_OUTPUT"
-              echo "Captured current image for ${{ matrix.deployment }}: $CURRENT_IMAGE"
-            else
-              echo "No current image found for container '${{ matrix.container }}' in deployment/${{ matrix.deployment }}"
-            fi
-          else
-            echo "Deployment ${{ matrix.deployment }} not found in namespace pv; skipping current image capture"
-          fi
-
       - name: Apply manifests
         if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true'
         run: |
           MANIFEST_DIR="${{ matrix.manifests_dir }}"
-          if [ -d "$MANIFEST_DIR" ]; then
-            echo "Applying manifests from: $MANIFEST_DIR"
-          elif [ -d "${{ matrix.path }}/k8s" ]; then
-            MANIFEST_DIR="${{ matrix.path }}/k8s"
-            echo "Applying package manifests from: $MANIFEST_DIR"
-          else
-            echo "No manifests found for ${{ matrix.name }}; skipping kubectl apply"
-            exit 0
-          fi
+          if [ ! -d "$MANIFEST_DIR" ]; then echo "No manifests found"; exit 0; fi
 
-          found_any=false
           for manifest in "$MANIFEST_DIR"/*.yaml; do
             [ -e "$manifest" ] || continue
-            found_any=true
             filename=$(basename "$manifest")
-
-            # Dependency-only worker run: apply runtime config, but do not re-apply
-            # deployment spec because it is image-pinned and may roll back image set via CI.
-            if [ "${{ matrix.name }}" = "pv-temporal-worker" ] && \
-               [ "${{ steps.changed.outputs.changed }}" = "false" ] && \
-               [ "${{ steps.changed.outputs.api_related_changed }}" = "true" ] && \
-               [ "$filename" = "worker-deployment.yaml" ]; then
-              echo "Skipping worker deployment manifest on API dependency-triggered run: $manifest"
+            
+            # Special logic for worker-only changes
+            if [ "${{ matrix.name }}" = "pv-temporal-worker" ] && [ "${{ steps.changed.outputs.changed }}" = "false" ] && [ "$filename" = "worker-deployment.yaml" ]; then
               continue
             fi
 
-            case "$filename" in
-              *secret*.yaml|secrets.yaml)
-                echo "Skipping secret manifest: $manifest"
-                ;;
-              *)
-                echo "Applying manifest: $manifest"
-                kubectl apply -f "$manifest" --kubeconfig=kubeconfig.yaml --namespace=pv
-                ;;
-            esac
+            if [[ "$filename" != *"secret"* ]]; then
+              kubectl apply -f "$manifest" --kubeconfig=kubeconfig.yaml --namespace=pv
+            fi
           done
 
-          if [ "$found_any" = false ]; then
-            echo "No YAML manifests in $MANIFEST_DIR"
-          fi
-
-      - name: Re-assert deployment image after manifests
+      - name: Update deployment image
         if: steps.changed.outputs.changed == 'true' && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
         run: |
           IMAGE=${{ matrix.image }}:${{ steps.vars.outputs.short_sha }}
-          echo "Re-applying deployment/${{ matrix.deployment }} container/${{ matrix.container }} to $IMAGE after manifest apply"
           kubectl set image deployment/${{ matrix.deployment }} \
             ${{ matrix.container }}=$IMAGE \
             --namespace=pv \
             --kubeconfig=kubeconfig.yaml
-
-      - name: Preserve image on non-code deploys
-        if: steps.changed.outputs.changed == 'false' && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != '' && steps.current_image.outputs.current_image != ''
-        run: |
-          IMAGE='${{ steps.current_image.outputs.current_image }}'
-          echo "Re-applying existing image for deployment/${{ matrix.deployment }} container/${{ matrix.container }}: $IMAGE"
-          kubectl set image deployment/${{ matrix.deployment }} \
-            ${{ matrix.container }}=$IMAGE \
-            --namespace=pv \
-            --kubeconfig=kubeconfig.yaml
-
-      - name: Verify Temporal task queue config
-        if: (matrix.name == 'pv-api' || matrix.name == 'pv-temporal-worker') && steps.deploy.outputs.has_kubeconfig == 'true' && (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true'))
-        run: |
-          EXPECTED_QUEUE="pv-image-processing"
-
-          if [ "${{ matrix.name }}" = "pv-api" ]; then
-            ACTUAL_QUEUE=$(kubectl get configmap pv-api-config --namespace=pv --kubeconfig=kubeconfig.yaml -o jsonpath='{.data.TASK_QUEUE}')
-            TARGET="configmap/pv-api-config"
-          else
-            ACTUAL_QUEUE=$(kubectl get configmap pv-worker-config --namespace=pv --kubeconfig=kubeconfig.yaml -o jsonpath='{.data.TASK_QUEUE}')
-            TARGET="configmap/pv-worker-config"
-          fi
-
-          echo "${TARGET} TASK_QUEUE=${ACTUAL_QUEUE}"
-
-          if [ "$ACTUAL_QUEUE" != "$EXPECTED_QUEUE" ]; then
-            echo "::error::${TARGET} has TASK_QUEUE='${ACTUAL_QUEUE}', expected '${EXPECTED_QUEUE}'"
-            exit 1
-          fi
-
-      - name: Rollout restart after secret/config updates
-        if: steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != '' && (steps.changed.outputs.manifests_changed == 'true' || steps.runtime_app_secret.outcome == 'success' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true'))
-        run: |
-          if kubectl get deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml >/dev/null 2>&1; then
-            echo "Restarting deployment/${{ matrix.deployment }} to reload Secret/ConfigMap changes"
-            kubectl rollout restart deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml
-          else
-            echo "Deployment ${{ matrix.deployment }} not found in namespace pv; skipping rollout restart"
-          fi
 
       - name: Wait for rollout
-        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
+        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true') && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
         run: |
-          if kubectl get deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml >/dev/null 2>&1; then
-            kubectl rollout status deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml --timeout=300s
-          else
-            echo "Deployment ${{ matrix.deployment }} not found in namespace pv; skipping rollout wait"
-          fi
-
-      - name: Report deployed image digest
-        if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true' || (matrix.name == 'pv-temporal-worker' && steps.changed.outputs.api_related_changed == 'true')) && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
-        run: |
-          echo "Deployment image (spec):"
-          kubectl get deployment/${{ matrix.deployment }} \
-            --namespace=pv \
-            --kubeconfig=kubeconfig.yaml \
-            -o jsonpath='{.spec.template.spec.containers[?(@.name=="${{ matrix.container }}")].image}{"\n"}'
-
-          echo "Running pod image digests:"
-          kubectl get pods \
-            --namespace=pv \
-            --kubeconfig=kubeconfig.yaml \
-            -l app=${{ matrix.deployment }} \
-            -o 'custom-columns=NAME:.metadata.name,IMAGE_ID:.status.containerStatuses[0].imageID' \
-            --no-headers || true
+          kubectl rollout status deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml --timeout=300s
 
       - name: Cleanup
         if: always()

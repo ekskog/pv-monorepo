@@ -2,6 +2,8 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
+const os = require("os");
+const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const { authenticateToken, requireRole } = require("../middleware/authMW");
 
@@ -14,11 +16,21 @@ const debug = require("debug");
 const debugAlbum = debug("pv:album");
 const debugUpload = debug("pv:upload");
 
-// Configure multer for file uploads (store in memory)
+// Configure multer for file uploads (store temporarily on disk to avoid OOM)
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, os.tmpdir());
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `${Date.now()}-${file.originalname}`;
+    cb(null, uniqueName);
+  },
+});
+
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage,
   limits: {
-    fileSize: 2 * 1024 * 1024 * 1024, // 2GB limit for large video files from iPhone
+    fileSize: 2 * 1024 * 1024 * 1024, // 2GB limit for large video files
   },
 });
 

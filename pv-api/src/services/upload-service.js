@@ -1,5 +1,9 @@
 const AvifConverterService = require("./avif-converter-service");
 const MetadataService = require("./metadata-service");
+const fs = require("fs");
+const util = require("util");
+const readFile = util.promisify(fs.readFile);
+const unlink = util.promisify(fs.unlink);
 const debug = require("debug");
 const debugUpload = debug("pv:upload-service");
 
@@ -26,7 +30,7 @@ class UploadService {
    * @returns {Object|null} Upload result (single object) or null if skipped
    */
   async processAndUploadFile(file, bucketName, folderPath = "") {
-    const { mimetype, originalname, buffer } = file;
+    let { mimetype, originalname, buffer } = file;
     debugUpload(`[(30)]: Processing file: ${originalname} with mimetype: ${mimetype}`);
 
     let extractedMetadata = null;
@@ -34,6 +38,17 @@ class UploadService {
 
     try {
       console.log(`[UPLOAD-SERVICE] >>> Starting processAndUploadFile for: ${originalname} (${mimetype})`);
+      // If multer used diskStorage, read file from disk into buffer for processing images
+      if ((!buffer || buffer.length === 0) && file.path) {
+        try {
+          buffer = await readFile(file.path);
+          // attach buffer for downstream usage
+          file.buffer = buffer;
+          file.size = buffer.length;
+        } catch (fsErr) {
+          console.error(`[UPLOAD-SERVICE] Failed to read temp file ${file.path}:`, fsErr.message);
+        }
+      }
       if (mimetype === "video/mp4" || mimetype === "video/mov" || mimetype === "video/avi" || mimetype === "video/quicktime") {
         console.log(`[UPLOAD-SERVICE] File identified as video: ${originalname}`);
         uploadResult = await this.processVideoFile(file, bucketName, folderPath);
@@ -76,6 +91,15 @@ class UploadService {
       // Release buffer memory
       if (file.buffer) {
         file.buffer = null;
+      }
+      // Clean up temp files written by multer.diskStorage
+      if (file.path) {
+        try {
+          await unlink(file.path);
+        } catch (unlinkErr) {
+          // Log but do not fail - cleanup best-effort
+          debugUpload(`[(FINALLY)] Failed to unlink temp file ${file.path}: ${unlinkErr.message}`);
+        }
       }
       // Note: global.gc() is not available in production (requires --expose-gc flag)
       // Uncomment below if running with --expose-gc for manual GC triggering
@@ -161,10 +185,20 @@ class UploadService {
         ? `${folderPath.replace(/\/$/, "")}/${file.originalname}`
         : file.originalname;
 
+      // Use stream if file is on disk to avoid buffering large video files in memory
+      let source = null;
+      if (file.buffer && file.buffer.length) {
+        source = file.buffer;
+      } else if (file.path) {
+        source = fs.createReadStream(file.path);
+      } else {
+        throw new Error('No file buffer or path available for video upload');
+      }
+
       const uploadInfo = await this.minioClient.putObject(
         bucketName,
         objectName,
-        file.buffer,
+        source,
         file.size,
         {
           "Content-Type": file.mimetype || "video/quicktime",

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pv-metadata
+  namespace: pv
+  labels:
+    app: pv-metadata
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pv-metadata
+  template:
+    metadata:
+      labels:
+        app: pv-metadata
+    spec:
+      # Use the secret created by your GH Action to pull from GHCR
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+      - name: pv-metadata
+        image: ghcr.io/ekskog/pv-metadata:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        # Basic health checks to ensure FastAPI is up before sending traffic
+        readinessProbe:
+          httpGet:
+            path: /docs  # FastAPI auto-generates this, easy health check
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /docs
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pv-metadata-service
+  namespace: pv
+spec:
+  selector:
+    app: pv-metadata
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000

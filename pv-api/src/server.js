@@ -36,8 +36,9 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: "2gb" })); // Increased for video uploads
-app.use(express.urlencoded({ limit: "2gb", extended: true })); // Increased for video uploads
+// Keep JSON/urlencoded limits small - large file uploads use multipart/multer (disk streaming)
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 // Import and Initialize services and dependencies
 

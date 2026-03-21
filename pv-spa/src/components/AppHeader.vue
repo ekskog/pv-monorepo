@@ -67,18 +67,7 @@ const mobileSearchQuery = ref("");ible on md and below) -->
         >
           Manage Users
         </button>
-        <button
-          v-if="isAdmin"
-          class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-          @click="
-            () => {
-              showMobileMenu = false;
-              $emit('navigate', 'settings');
-            }
-          "
-        >
-          Settings
-        </button>
+
         <button
           v-if="isAdmin"
           class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
@@ -91,6 +80,20 @@ const mobileSearchQuery = ref("");ible on md and below) -->
         >
           Bulk Upload Jobs
         </button>
+
+        <button
+          v-if="isAdmin"
+          class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+          @click="
+            () => {
+              showMobileMenu = false;
+              $emit('navigate', 'settings');
+            }
+          "
+        >
+          Settings
+        </button>
+
 
         <!-- Auth Menu Section -->
         <div class="border-t border-gray-200 px-4 py-2">

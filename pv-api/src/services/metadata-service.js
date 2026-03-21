@@ -1,34 +1,29 @@
-const sharp = require("sharp");
 const debug = require("debug");
 const debugMetadata = debug("pv:metadata");
-const debugGps = debug("pv:metadata:gps");
 const config = require("../config");
 
 /**
- * Optimized Metadata Service - Delegates extraction to pv-metadata microservice
+ * Metadata Service - Orchestrates remote extraction and MinIO persistence
  */
 class MetadataService {
   constructor(minioClient) {
     this.minioClient = minioClient;
     this.mapboxToken = config.mapbox_token;
-    // The internal K3s URL for your Python service
     this.metadataUrl = config.metadata?.url || 'http://pv-metadata-service';
   }
 
   /**
-   * Extract essential metadata from image buffer via Python Microservice
+   * Extract essential metadata via Python Microservice
    */
   async extractEssentialMetadata(buffer, filename) {
     try {
       const formData = new FormData();
-      // Node 22 native Blob and FormData
       const blob = new Blob([buffer]);
       formData.append("file", blob, filename);
 
       const response = await fetch(`${this.metadataUrl}/extract`, {
         method: "POST",
         body: formData,
-        // Using a standard signal for timeout if needed, or rely on K8s/Node defaults
       });
 
       if (!response.ok) {
@@ -37,7 +32,8 @@ class MetadataService {
 
       const pythonData = await response.json();
 
-      // Map Python response back to your existing API schema
+      // Mapping Python response back to your specific API schema
+      // Ensuring Numbers stay Numbers and Strings stay Strings
       return {
         sourceImage: filename,
         timestamp: pythonData.device?.created_at || "not found",
@@ -56,7 +52,7 @@ class MetadataService {
         }
       };
     } catch (error) {
-      console.error(`Remote metadata extraction failed for ${filename}:`, error.message);
+      debugMetadata(`Remote metadata extraction failed for ${filename}: ${error.message}`);
       return this.getEmptyMetadata(filename);
     }
   }
@@ -102,7 +98,7 @@ class MetadataService {
   }
 
   /**
-   * Update folder metadata JSON in MinIO
+   * Update folder metadata JSON in MinIO - CRITICAL PERSISTENCE LOGIC
    */
   async updateFolderMetadata(bucketName, objectName, metadata) {
     const parts = objectName.split("/");
@@ -119,6 +115,7 @@ class MetadataService {
         for await (const chunk of stream) chunks.push(chunk);
         folderData = JSON.parse(Buffer.concat(chunks).toString());
       } catch (err) {
+        // Create new folder metadata if it doesn't exist
         folderData = {
           folderName,
           media: [],
@@ -126,6 +123,7 @@ class MetadataService {
         };
       }
 
+      // Merge new extraction with existing folder data
       const imageData = {
         sourceImage: objectName,
         timestamp: metadata.timestamp || "not captured",
@@ -134,16 +132,19 @@ class MetadataService {
         settings: metadata.settings || "not found"
       };
 
+      // De-duplicate: Remove old entry for this image if it exists
       folderData.media = folderData.media.filter(img => img.sourceImage !== objectName);
       folderData.media.push(imageData);
       folderData.lastUpdated = new Date().toISOString();
 
+      // Write back to MinIO
       await this.minioClient.putObject(
         bucketName,
         jsonFileName,
         Buffer.from(JSON.stringify(folderData, null, 2))
       );
 
+      debugMetadata(`Successfully updated metadata for ${objectName} in ${jsonFileName}`);
       return true;
     } catch (error) {
       debugMetadata(`Failed to update folder metadata: ${error.message}`);

@@ -1,5 +1,4 @@
 const exifr = require("exifr");
-const FormData = require('form-data');
 const debug = require("debug");
 const debugMetadata = debug("photovault:metadata");
 const debugGps = debug("photovault:metadata:gps");
@@ -23,75 +22,44 @@ class MetadataService {
    */
   async extractEssentialMetadata(buffer, filename) {
     try {
-      //debugMetadata(`[(25)] > Extracting metadata from: ${filename}`);
+      debugMetadata(`[(25)] > Extracting metadata from: ${filename}`);
 
-      // --- Proxy call to Python metadata microservice (non-blocking) ---
-      try {
-        const pythonUrl = process.env.METADATA_SERVICE_URL || 'http://pv-metadata-service:80/extract';
-        const form = new FormData();
-        // Use server-side form-data append signature that accepts Buffer
-        // Provide a contentType for the part so the Python parser knows the file type
-        form.append('file', buffer, { filename: filename || 'upload', contentType: 'application/octet-stream' });
-
-        // Build headers including Content-Length when available (helps some parsers)
-        const headers = form.getHeaders();
-        try {
-          const len = form.getLengthSync();
-          if (len && !isNaN(len)) headers['Content-Length'] = len;
-        } catch (e) {
-          // getLengthSync can fail for complex streams; ignore and proceed without it
-        }
-
-          fetch(pythonUrl, { method: 'POST', body: form, headers, timeout: 10000 })
-            .then(async (res) => {
-              const text = await res.text();
-              let body = text;
-              try { body = JSON.parse(text); } catch (e) { /* keep raw text */ }
-              if (!res.ok) {
-                console.error('[metadata-proxy] python service returned non-OK status', { url: pythonUrl, status: res.status, statusText: res.statusText, body });
-              } else {
-                console.log('[metadata-proxy] called', pythonUrl, 'status=', res.status, 'response=', body);
-              }
-            })
-            .catch((err) => {
-              // Log detailed error info to help diagnose network/parse failures
-              try {
-                console.error('[metadata-proxy] error calling python service:', {
-                  name: err && err.name,
-                  message: err && err.message,
-                  code: err && err.code,
-                  stack: err && err.stack,
-                });
-              try {
-                const pythonUrl = process.env.METADATA_SERVICE_URL || 'http://pv-metadata-service:80/extract';
-
-                // Use Node 22 global FormData and Blob (undici) to build multipart body
-                const mimeType = filename && /\.(heic|heif)$/i.test(filename) ? 'image/heic' : 'application/octet-stream';
-                const fd = new FormData();
-                const fileBlob = new Blob([buffer], { type: mimeType });
-                fd.append('file', fileBlob, filename || 'upload');
-
-                fetch(pythonUrl, { method: 'POST', body: fd, timeout: 10000 })
-                  .then(async (res) => {
-                    const text = await res.text();
-                    let body = text;
-                    try { body = JSON.parse(text); } catch (e) { /* keep raw text */ }
-                    if (!res.ok) {
-                      console.error('[metadata-proxy] python service returned non-OK status', { url: pythonUrl, status: res.status, statusText: res.statusText, body });
-                    } else {
-                      console.log('[metadata-proxy] called', pythonUrl, 'status=', res.status, 'response=', body);
-                    }
-                  })
-                  .catch((err) => {
-                    try {
-                      console.error('[metadata-proxy] error calling python service:', { name: err && err.name, message: err && err.message, code: err && err.code, stack: err && err.stack });
-                    } catch (logErr) {
-                      console.error('[metadata-proxy] error calling python service (failed to serialize error):', err);
-                    }
-                  });
-              } catch (e) {
-                console.error('[metadata-proxy] failed to start proxy request:', e && e.message ? e.message : e);
-              }
+      // Extract comprehensive metadata in one pass
+      const exifData = await exifr.parse(buffer, {
+        gps: true,
+        pick: [
+          // Date/time
+          "DateTimeOriginal",
+          "CreateDate",
+          "DateTime",
+          "DateTimeDigitized",
+          // GPS
+          "latitude",
+          "longitude",
+          "GPSLatitude",
+          "GPSLongitude",
+          "GPSLatitudeRef",
+          "GPSLongitudeRef",
+          // Camera info
+          "Make",
+          "Model",
+          "Software",
+          "LensModel",
+          // Photo settings
+          "ISO",
+          "ISOSpeedRatings",
+          "FNumber",
+          "ApertureValue",
+          "ExposureTime",
+          "ShutterSpeedValue",
+          "FocalLength",
+          "Flash",
+          "WhiteBalance",
+          // Image properties
+          "ImageWidth",
+          "ImageHeight",
+          "ExifImageWidth",
+          "ExifImageHeight",
           "Orientation",
           "ColorSpace",
           "XResolution",
@@ -283,7 +251,7 @@ class MetadataService {
 
     const apiKey = this.mapboxToken;
     if (!apiKey) {
-      //debugGps(`[metadata-service.js LINE 257]:  MAPBOX_TOKEN not found in environment variables`);
+      debugGps(`[metadata-service.js LINE 257]:  MAPBOX_TOKEN not found in environment variables`);
       return "API key not configured";
     }
 
@@ -291,7 +259,7 @@ class MetadataService {
       const [lat, lng] = coordinates.split(",");
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${apiKey}&types=address,poi,place`;
 
-      //debugGps(` [metadata-service.js LINE 262]:    Coordinates: ${coordinates}`);
+      debugGps(` [metadata-service.js LINE 262]:    Coordinates: ${coordinates}`);
 
       const response = await fetch(url, { timeout: 5000 });
 
@@ -306,14 +274,14 @@ class MetadataService {
         const feature = data.features[0];
         const address =
           feature.place_name || feature.text || "Address not found";
-        //debugGps(` [(277)]:  Found address: ${address}`);
+        debugGps(` [(277)]:  Found address: ${address}`);
         return address;
       } else {
-        //debugGps(`[(285)]:  No features found in Mapbox response`;
+        debugGps(`[(285)]:  No features found in Mapbox response`);
         return "Address not found";
       }
     } catch (error) {
-      //debugGps(` [(3290)]: Error getting address for ${coordinates}: ${error.message}`);
+      debugGps(` [(3290)]: Error getting address for ${coordinates}: ${error.message}`);
       return "Address lookup failed";
     }
   }
@@ -325,14 +293,14 @@ class MetadataService {
     const folderName = objectName.split("/")[0];
     if (!folderName || folderName === objectName) return; // Skip root uploads
     const jsonFileName = `${folderName}/${folderName}.json`;
-    //debugMetadata(`[(302)]: Bucket: ${bucketName}, Folder: ${folderName}, JSON: ${jsonFileName}`);
+    debugMetadata(`[(302)]: Bucket: ${bucketName}, Folder: ${folderName}, JSON: ${jsonFileName}`);
 
     try {
       let folderData;
       const chunks = [];
 
       try {
-        //debugMetadata(`[(309)]: Attempting to retrieve existing metadata from ${jsonFileName}...`);
+        debugMetadata(`[(309)]: Attempting to retrieve existing metadata from ${jsonFileName}...`);
         const stream = await this.minioClient.getObject(
           bucketName,
           jsonFileName
@@ -340,9 +308,9 @@ class MetadataService {
         for await (const chunk of stream) chunks.push(chunk);
         const rawData = Buffer.concat(chunks).toString();
         folderData = JSON.parse(rawData);
-        //debugMetadata(`[(334)]: Parsed existing metadata successfully.`);
+        debugMetadata(`[(334)]: Parsed existing metadata successfully.`);
       } catch (err) {
-        //debugMetadata(`[(335)]: Could not retrieve or parse existing metadata. Reason: ${err.message}`);
+        debugMetadata(`[(335)]: Could not retrieve or parse existing metadata. Reason: ${err.message}`);
         folderData = {
           folderName,
           media: [],
@@ -375,7 +343,7 @@ class MetadataService {
 
       return true;
     } catch (error) {
-      //debugMetadata(`[(376)]: Failed to update folder metadata: ${error.message}`);
+      debugMetadata(`[(376)]: Failed to update folder metadata: ${error.message}`);
       return false;
     }
   }

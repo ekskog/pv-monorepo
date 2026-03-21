@@ -1,4 +1,5 @@
 const exifr = require("exifr");
+const FormData = require('form-data');
 const debug = require("debug");
 const debugMetadata = debug("photovault:metadata");
 const debugGps = debug("photovault:metadata:gps");
@@ -28,10 +29,10 @@ class MetadataService {
       try {
         const pythonUrl = process.env.METADATA_SERVICE_URL || 'http://pv-metadata-service:80/extract';
         const form = new FormData();
-        // In Node 18+ FormData supports Buffer directly
-        form.append('file', buffer, filename || 'upload');
+        // Use server-side form-data append signature that accepts Buffer
+        form.append('file', buffer, { filename: filename || 'upload' });
 
-        fetch(pythonUrl, { method: 'POST', body: form })
+        fetch(pythonUrl, { method: 'POST', body: form, headers: form.getHeaders() })
           .then(async (res) => {
             const text = await res.text();
             let body = text;

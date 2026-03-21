@@ -62,50 +62,36 @@ class MetadataService {
                   code: err && err.code,
                   stack: err && err.stack,
                 });
-              } catch (logErr) {
-                console.error('[metadata-proxy] error calling python service (failed to serialize error):', err);
-              }
-            });
-      } catch (e) {
-        console.error('[metadata-proxy] failed to start proxy request:', e && e.message ? e.message : e);
-      }
+              try {
+                const pythonUrl = process.env.METADATA_SERVICE_URL || 'http://pv-metadata-service:80/extract';
 
-      // Extract comprehensive metadata in one pass
-      const exifData = await exifr.parse(buffer, {
-        gps: true,
-        pick: [
-          // Date/time
-          "DateTimeOriginal",
-          "CreateDate",
-          "DateTime",
-          "DateTimeDigitized",
-          // GPS
-          "latitude",
-          "longitude",
-          "GPSLatitude",
-          "GPSLongitude",
-          "GPSLatitudeRef",
-          "GPSLongitudeRef",
-          // Camera info
-          "Make",
-          "Model",
-          "Software",
-          "LensModel",
-          // Photo settings
-          "ISO",
-          "ISOSpeedRatings",
-          "FNumber",
-          "ApertureValue",
-          "ExposureTime",
-          "ShutterSpeedValue",
-          "FocalLength",
-          "Flash",
-          "WhiteBalance",
-          // Image properties
-          "ImageWidth",
-          "ImageHeight",
-          "ExifImageWidth",
-          "ExifImageHeight",
+                // Use Node 22 global FormData and Blob (undici) to build multipart body
+                const mimeType = filename && /\.(heic|heif)$/i.test(filename) ? 'image/heic' : 'application/octet-stream';
+                const fd = new FormData();
+                const fileBlob = new Blob([buffer], { type: mimeType });
+                fd.append('file', fileBlob, filename || 'upload');
+
+                fetch(pythonUrl, { method: 'POST', body: fd, timeout: 10000 })
+                  .then(async (res) => {
+                    const text = await res.text();
+                    let body = text;
+                    try { body = JSON.parse(text); } catch (e) { /* keep raw text */ }
+                    if (!res.ok) {
+                      console.error('[metadata-proxy] python service returned non-OK status', { url: pythonUrl, status: res.status, statusText: res.statusText, body });
+                    } else {
+                      console.log('[metadata-proxy] called', pythonUrl, 'status=', res.status, 'response=', body);
+                    }
+                  })
+                  .catch((err) => {
+                    try {
+                      console.error('[metadata-proxy] error calling python service:', { name: err && err.name, message: err && err.message, code: err && err.code, stack: err && err.stack });
+                    } catch (logErr) {
+                      console.error('[metadata-proxy] error calling python service (failed to serialize error):', err);
+                    }
+                  });
+              } catch (e) {
+                console.error('[metadata-proxy] failed to start proxy request:', e && e.message ? e.message : e);
+              }
           "Orientation",
           "ColorSpace",
           "XResolution",

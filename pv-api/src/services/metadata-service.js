@@ -24,6 +24,27 @@ class MetadataService {
     try {
       //debugMetadata(`[(25)] > Extracting metadata from: ${filename}`);
 
+      // --- Proxy call to Python metadata microservice (non-blocking) ---
+      try {
+        const pythonUrl = process.env.METADATA_SERVICE_URL || 'http://pv-metadata-service:80/extract';
+        const form = new FormData();
+        // In Node 18+ FormData supports Buffer directly
+        form.append('file', buffer, filename || 'upload');
+
+        fetch(pythonUrl, { method: 'POST', body: form })
+          .then(async (res) => {
+            const text = await res.text();
+            let body = text;
+            try { body = JSON.parse(text); } catch (e) { /* keep raw text */ }
+            console.log('[metadata-proxy] called', pythonUrl, 'status=', res.status, 'response=', body);
+          })
+          .catch((err) => {
+            console.error('[metadata-proxy] error calling python service:', err && err.message ? err.message : err);
+          });
+      } catch (e) {
+        console.error('[metadata-proxy] failed to start proxy request:', e && e.message ? e.message : e);
+      }
+
       // Extract comprehensive metadata in one pass
       const exifData = await exifr.parse(buffer, {
         gps: true,

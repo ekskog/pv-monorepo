@@ -1,7 +1,7 @@
 const exifr = require("exifr");
 const debug = require("debug");
-const debugMetadata = debug("photovault:metadata");
-const debugGps = debug("photovault:metadata:gps");
+const debugMetadata = debug("pv:metadata");
+const debugGps = debug("pv:metadata:gps");
 const config = require('../config'); // defaults to ./config/index.js
 
 /**

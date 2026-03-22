@@ -48,7 +48,7 @@ class AvifConverterService {
   * @returns {Object} Conversion result with AVIF files
   */
   async convertImage(fileBuffer, originalName, mimeType, returnContents = true) {
-    console.log(`[AVIF-CONVERTER] >>> Starting conversion request for ${originalName} to ${this.converterUrl}`);
+    debugConverter(`[AVIF-CONVERTER] >>> Starting conversion request for ${originalName} to ${this.converterUrl}`);
     try {
       const endpoint = '/convert';
       const formData = new FormData();
@@ -56,13 +56,13 @@ class AvifConverterService {
       formData.append('image', blob, originalName);
       formData.append('mimeType', mimeType);
 
-      console.log(`[AVIF-CONVERTER] Sending POST to ${this.converterUrl}${endpoint}...`);
+      debugConverter(`[AVIF-CONVERTER] Sending POST to ${this.converterUrl}${endpoint}...`);
       const response = await fetch(`${this.converterUrl}${endpoint}`, {
         method: 'POST',
         body: formData,
         timeout: this.converterTimeout
       });
-      console.log(`[AVIF-CONVERTER] Received ${response.status} from converter for ${originalName}`);
+      debugConverter(`[AVIF-CONVERTER] Received ${response.status} from converter for ${originalName}`);
       //debugConverter(`[(65)] Received ${response.status} | ${response.statusText} from converter for ${originalName}`);
       if (!response.ok) {
         const errorText = await response.text();

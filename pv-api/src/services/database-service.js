@@ -1,3 +1,6 @@
+const debug = require("debug");
+// Debug namespaces
+const debugDBService = debug("pv:database-service");
 // Database configuration and connection setup
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcryptjs");
@@ -45,12 +48,12 @@ class Database {
         await this.initializeDefaultUsers();
       } 
       // else {
-      //   console.log(`${users.length} users already exist.`);
+      //   debugDBService(`${users.length} users already exist.`);
       // }
 
       return connection;
     } catch (error) {
-      console.error("Failed to initialize database:", error.message);
+      debugDBService("Failed to initialize database:", error.message);
       throw error;
     }
   }
@@ -67,7 +70,7 @@ class Database {
       connection.release();
       return true;
     } catch (error) {
-      console.error("Database health check failed:", error.message);
+      debugDBService("Database health check failed:", error.message);
       return false;
     }
   }
@@ -255,7 +258,7 @@ class Database {
       );
 
       if (existing.length > 0) {
-        // console.log("Album with this path already exists");
+        // debugDBService("Album with this path already exists");
         return { result: false, message: "Album with this path already exists" };
       }
 

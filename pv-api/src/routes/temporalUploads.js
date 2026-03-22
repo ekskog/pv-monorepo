@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const debug = require("debug");
+const debugTemporal = debug("pv:server:temporal");
 const debugBBulkApi = debug("pv:server:bulk");
 
 const multer = require("multer");
@@ -96,15 +97,15 @@ module.exports = (temporalClient, config) => {
                                 albumName: folder,
                             }],
                         });
-                    console.log(`[Background] Workflow started for batch ${batchId}`);
-                    console.log(`[Background] Will save to album ${folder} after processing.`);
+                    debugTemporal(`[Background] Workflow started for batch ${batchId}`);
+                    debugTemporal(`[Background] Will save to album ${folder} after processing.`);
                 } else {
-                    console.warn(`[Background] Temporal Client not initialized. Batch ${batchId} staged but not started.`);
+                    debugTemporal(`[Background] Temporal Client not initialized. Batch ${batchId} staged but not started.`);
                 }
 
             } catch (error) {
                 // Since the client is long gone, we must log detailed errors here
-                console.error(`[CRITICAL BACKGROUND FAILURE] Batch ${batchId}:`, error);
+                debugTemporal(`[CRITICAL BACKGROUND FAILURE] Batch ${batchId}:`, error);
             }
         });
     });

@@ -1,4 +1,5 @@
 const exifr = require("exifr");
+const sharp = require("sharp");
 const debug = require("debug");
 const debugMetadata = debug("pv:metadata");
 const debugGps = debug("pv:metadata:gps");
@@ -14,28 +15,6 @@ class MetadataService {
     this.gpsCache = new Map(); // Cache GPS lookups
   }
 
-  // Helper: dump initial header as hex string
-  headerHex(buf, len = 32) {
-    if (!buf) return '';
-    const slice = buf.slice(0, Math.min(len, buf.length));
-    const hex = Buffer.from(slice).toString('hex');
-    const parts = hex.match(/.{1,2}/g) || [];
-    return parts.join(' ');
-  }
-
-  isJpeg(buf) {
-    return buf && buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8;
-  }
-
-  isHeic(buf) {
-    // ISO BMFF: at offset 4 must be 'ftyp' and major brand at offset 8 often 'heic','heix','hevc','mif1'
-    if (!buf || buf.length < 12) return false;
-    const box = buf.toString('ascii', 4, 8);
-    if (box !== 'ftyp') return false;
-    const brand = buf.toString('ascii', 8, 12);
-    return ['heic', 'heix', 'hevc', 'mif1', 'msf1'].includes(brand);
-  }
-
   /**
    * Extract essential metadata from image buffer
    * @param {Buffer} buffer - Image buffer
@@ -43,19 +22,14 @@ class MetadataService {
    * @returns {Object} Extracted metadata
    */
   async extractEssentialMetadata(buffer, filename) {
+    console.log(`[METADATA-SERVICE] >>> Starting metadata extraction for: ${filename} (Buffer size: ${buffer.length} bytes)`);
     try {
-      debugMetadata(`[(25)] > Extracting metadata from: ${filename}`);
-
-      // Log header inspection to help diagnose format/magic-byte issues
-      try {
-        debugMetadata(`[(25.1)] Header: ${this.headerHex(buffer, 32)}`);
-        debugMetadata(`[(25.2)] isJPEG: ${this.isJpeg(buffer)}, isHEIC: ${this.isHeic(buffer)}`);
-      } catch (hdrErr) {
-        debugMetadata(`[(25.3)] Header inspection failed: ${hdrErr.message}`);
-      }
+      //debugMetadata(`[(26)] > Extracting metadata from: ${filename}`);
 
       // Extract comprehensive metadata in one pass
-      const parseOptions = {
+      let exifData;
+      const exifrOptions = {
+        heic: true,
         gps: true,
         pick: [
           // Date/time
@@ -94,34 +68,65 @@ class MetadataService {
           "ColorSpace",
           "XResolution",
           "YResolution",
+          "PixelXDimension",
+          "PixelYDimension",
         ],
       };
 
-      // Local-only parsing: directly parse the buffer with exifr.
-      // Keep header helpers/logs for diagnostics but do not perform conversion or proxying.
-      let exifData;
       try {
-        exifData = await exifr.parse(buffer, parseOptions);
-      } catch (err) {
-        debugMetadata(`[(48)]: exifr.parse threw for ${filename}: ${err.stack || err.message}`);
+        console.log(`[METADATA-SERVICE] Attempting exifr.parse for ${filename}`);
+        exifData = await exifr.parse(buffer, exifrOptions);
+        console.log(`[METADATA-SERVICE] exifr.parse succeeded for ${filename}`);
+      } catch (exifrError) {
+        console.log(`[METADATA-SERVICE] ! exifr failed for ${filename}: ${exifrError.message}. Trying sharp fallback...`);
         try {
-          debugMetadata(`[(49)]: buffer info: typeof=${typeof buffer}, isBuffer=${Buffer.isBuffer(buffer)}, length=${buffer?.length}, byteLength=${buffer?.byteLength}`);
-          debugMetadata(`[(50)]: header64: ${this.headerHex(buffer, 64)}`);
-          // Try a Uint8Array fallback (helps when exifr expects typed arrays)
-          if (Buffer.isBuffer(buffer)) {
-            const arr = new Uint8Array(buffer);
-            exifData = await exifr.parse(arr, parseOptions);
-            debugMetadata(`[(54)]: exifr.parse succeeded with Uint8Array fallback for ${filename}`);
-          } else if (buffer && buffer.buffer) {
-            exifData = await exifr.parse(buffer.buffer, parseOptions);
-            debugMetadata(`[(56)]: exifr.parse succeeded with ArrayBuffer fallback for ${filename}`);
+          // If the file is HEIC, try using our heic-decode dependency to extract EXIF
+          let rawExifBuffer = null;
+
+          if (filename.toLowerCase().endsWith('.heic')) {
+            console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] Attempting to extract EXIF with heic-decode for ${filename}`);
+            const heicDecode = require('heic-decode');
+            const heicData = await heicDecode({ buffer });
+
+            // Extract EXIF data if present in the HEIC blocks
+            const exifBlock = heicData.images[0]?.exif;
+            if (exifBlock) {
+              console.log(`[METADATA-SERVICE] [HEIC-FALLBACK] Found EXIF block. Parsing with exifr...`);
+              rawExifBuffer = exifBlock;
+            }
           }
-        } catch (fallbackErr) {
-          debugMetadata(`[(60)]: exifr fallback attempts failed for ${filename}: ${fallbackErr.stack || fallbackErr.message}`);
-          throw err;
+
+          if (!rawExifBuffer) {
+            // Fallback to sharp to extract raw EXIF buffer for other formats
+            console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] Reading metadata with sharp for ${filename}`);
+            const sharpMeta = await sharp(buffer).metadata();
+            rawExifBuffer = sharpMeta.exif;
+
+            if (!rawExifBuffer) {
+              // If no exif block, at least try using sharp's basic width/height
+              console.log(`[METADATA-SERVICE] [SHARP-FALLBACK] No EXIF block found by sharp. Using basic dimensions.`);
+              exifData = {
+                ImageWidth: sharpMeta.width,
+                ImageHeight: sharpMeta.height,
+                Orientation: sharpMeta.orientation,
+                ColorSpace: sharpMeta.space,
+              };
+            }
+          }
+
+          if (rawExifBuffer) {
+            console.log(`[METADATA-SERVICE] Parsing extracted EXIF buffer...`);
+            // Parse the extracted raw EXIF buffer
+            exifData = await exifr.parse(rawExifBuffer, exifrOptions);
+            console.log(`[METADATA-SERVICE] EXIF buffer parsing succeeded for ${filename}`);
+          }
+        } catch (fallbackError) {
+          console.error(`[METADATA-SERVICE] [FALLBACK] !!! Fallback failed for ${filename}:`, fallbackError.message);
+          throw exifrError; // Throw original error if fallback also fails
         }
       }
 
+      console.log(`[METADATA-SERVICE] Building metadata object for ${filename}`);
       const metadata = {
         sourceImage: filename,
         timestamp: "not found",
@@ -154,7 +159,6 @@ class MetadataService {
       };
 
       if (exifData) {
-        debugMetadata(`[(122)]: Extracted EXIF data for ${filename}:`, exifData);
         // Extract timestamp
         const dateFields = [
           "DateTimeOriginal",
@@ -164,7 +168,6 @@ class MetadataService {
         ];
         for (const field of dateFields) {
           if (exifData[field]) {
-            debugMetadata(`[(128)]: Found date field ${field} for ${filename}: ${exifData[field]}`);
             try {
               metadata.timestamp = new Date(exifData[field]).toISOString();
               break;
@@ -213,8 +216,6 @@ class MetadataService {
             metadata.coordinates,
             filename
           );
-        } else {
-          debugGps(`[(207)]: No valid GPS coordinates found for ${filename}`);
         }
 
         // Extract camera info
@@ -236,53 +237,29 @@ class MetadataService {
 
         // Extract dimensions
         metadata.dimensions.width =
-          exifData.ImageWidth || exifData.ExifImageWidth || "not found";
+          exifData.ImageWidth || exifData.ExifImageWidth || exifData.PixelXDimension || "not found";
         metadata.dimensions.height =
-          exifData.ImageHeight || exifData.ExifImageHeight || "not found";
+          exifData.ImageHeight || exifData.ExifImageHeight || exifData.PixelYDimension || "not found";
         metadata.dimensions.orientation = exifData.Orientation || "not found";
         metadata.dimensions.colorSpace = exifData.ColorSpace || "not found";
         metadata.dimensions.resolution.x = exifData.XResolution || "not found";
         metadata.dimensions.resolution.y = exifData.YResolution || "not found";
       }
 
-      debugMetadata(`[(263)]: Final extracted metadata for ${filename}:`, metadata);  
       return metadata;
     } catch (error) {
-      debugMetadata(`Error extracting metadata from ${filename}:`,  error.message);
-    }
-  
-
+      console.error(`Error extracting metadata from ${filename}:`, error.message);
       return {
         sourceImage: filename,
         timestamp: "not found",
         coordinates: "not found",
         location: "not found",
-        camera: {
-          make: "not found",
-          model: "not found",
-          software: "not found",
-          lens: "not found",
-        },
-        settings: {
-          iso: "not found",
-          aperture: "not found",
-          shutterSpeed: "not found",
-          focalLength: "not found",
-          flash: "not found",
-          whiteBalance: "not found",
-        },
-        dimensions: {
-          width: "not found",
-          height: "not found",
-          orientation: "not found",
-          colorSpace: "not found",
-          resolution: {
-            x: "not found",
-            y: "not found",
-          },
-        },
+        camera: { make: "not found", model: "not found", software: "not found", lens: "not found" },
+        settings: { iso: "not found", aperture: "not found", shutterSpeed: "not found", focalLength: "not found", flash: "not found", whiteBalance: "not found" },
+        dimensions: { width: "not found", height: "not found", orientation: "not found", colorSpace: "not found", resolution: { x: "not found", y: "not found" } },
       };
     }
+  }
 
   /**
    * Convert DMS (degrees, minutes, seconds) to decimal degrees
@@ -311,16 +288,14 @@ class MetadataService {
 
     const apiKey = this.mapboxToken;
     if (!apiKey) {
-      debugGps(`[metadata-service.js LINE 257]:  MAPBOX_TOKEN not found in environment variables`);
+      //debugGps(`[metadata-service.js LINE 257]:  MAPBOX_TOKEN not found in environment variables`);
       return "API key not configured";
     }
 
     try {
       const [lat, lng] = coordinates.split(",");
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${apiKey}&types=address,poi,place`;
-
-      debugGps(` [metadata-service.js LINE 262]:    Coordinates: ${coordinates}`);
-
+      //debugGps(` [metadata-service.js LINE 262]:    Coordinates: ${coordinates}`);
       const response = await fetch(url, { timeout: 5000 });
 
       if (!response.ok) {
@@ -334,14 +309,14 @@ class MetadataService {
         const feature = data.features[0];
         const address =
           feature.place_name || feature.text || "Address not found";
-        debugGps(` [(277)]:  Found address: ${address}`);
+        //debugGps(` [(277)]:  Found address: ${address}`);
         return address;
       } else {
-        debugGps(`[(285)]:  No features found in Mapbox response`);
+        //debugGps(`[(285)]:  No features found in Mapbox response`);
         return "Address not found";
       }
     } catch (error) {
-      debugGps(` [(3290)]: Error getting address for ${coordinates}: ${error.message}`);
+      //debugGps(` [(3290)]: Error getting address for ${coordinates}: ${error.message}`);
       return "Address lookup failed";
     }
   }
@@ -353,14 +328,13 @@ class MetadataService {
     const folderName = objectName.split("/")[0];
     if (!folderName || folderName === objectName) return; // Skip root uploads
     const jsonFileName = `${folderName}/${folderName}.json`;
-    debugMetadata(`[(302)]: Bucket: ${bucketName}, Folder: ${folderName}, JSON: ${jsonFileName}`);
-
+    //debugMetadata(`[(302)]: Bucket: ${bucketName}, Folder: ${folderName}, JSON: ${jsonFileName}`);
     try {
       let folderData;
       const chunks = [];
 
       try {
-        debugMetadata(`[(309)]: Attempting to retrieve existing metadata from ${jsonFileName}...`);
+        //debugMetadata(`[(309)]: Attempting to retrieve existing metadata from ${jsonFileName}...`);
         const stream = await this.minioClient.getObject(
           bucketName,
           jsonFileName
@@ -368,9 +342,9 @@ class MetadataService {
         for await (const chunk of stream) chunks.push(chunk);
         const rawData = Buffer.concat(chunks).toString();
         folderData = JSON.parse(rawData);
-        debugMetadata(`[(334)]: Parsed existing metadata successfully.`);
+        //debugMetadata(`[(334)]: Parsed existing metadata successfully.`);
       } catch (err) {
-        debugMetadata(`[(335)]: Could not retrieve or parse existing metadata. Reason: ${err.message}`);
+        //debugMetadata(`[(335)]: Could not retrieve or parse existing metadata. Reason: ${err.message}`);
         folderData = {
           folderName,
           media: [],
@@ -403,7 +377,7 @@ class MetadataService {
 
       return true;
     } catch (error) {
-      debugMetadata(`[(376)]: Failed to update folder metadata: ${error.message}`);
+      //debugMetadata(`[(376)]: Failed to update folder metadata: ${error.message}`);
       return false;
     }
   }

@@ -14,6 +14,28 @@ class MetadataService {
     this.gpsCache = new Map(); // Cache GPS lookups
   }
 
+  // Helper: dump initial header as hex string
+  headerHex(buf, len = 32) {
+    if (!buf) return '';
+    const slice = buf.slice(0, Math.min(len, buf.length));
+    const hex = Buffer.from(slice).toString('hex');
+    const parts = hex.match(/.{1,2}/g) || [];
+    return parts.join(' ');
+  }
+
+  isJpeg(buf) {
+    return buf && buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8;
+  }
+
+  isHeic(buf) {
+    // ISO BMFF: at offset 4 must be 'ftyp' and major brand at offset 8 often 'heic','heix','hevc','mif1'
+    if (!buf || buf.length < 12) return false;
+    const box = buf.toString('ascii', 4, 8);
+    if (box !== 'ftyp') return false;
+    const brand = buf.toString('ascii', 8, 12);
+    return ['heic', 'heix', 'hevc', 'mif1', 'msf1'].includes(brand);
+  }
+
   /**
    * Extract essential metadata from image buffer
    * @param {Buffer} buffer - Image buffer
@@ -23,6 +45,14 @@ class MetadataService {
   async extractEssentialMetadata(buffer, filename) {
     try {
       debugMetadata(`[(25)] > Extracting metadata from: ${filename}`);
+
+      // Log header inspection to help diagnose format/magic-byte issues
+      try {
+        debugMetadata(`[(25.1)] Header: ${this.headerHex(buffer, 32)}`);
+        debugMetadata(`[(25.2)] isJPEG: ${this.isJpeg(buffer)}, isHEIC: ${this.isHeic(buffer)}`);
+      } catch (hdrErr) {
+        debugMetadata(`[(25.3)] Header inspection failed: ${hdrErr.message}`);
+      }
 
       // Extract comprehensive metadata in one pass
       const exifData = await exifr.parse(buffer, {

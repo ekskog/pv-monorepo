@@ -99,6 +99,7 @@ class MetadataService {
       };
 
       if (exifData) {
+        debugMetadata(`[(122)]: Extracted EXIF data for ${filename}:`, exifData);
         // Extract timestamp
         const dateFields = [
           "DateTimeOriginal",
@@ -108,6 +109,7 @@ class MetadataService {
         ];
         for (const field of dateFields) {
           if (exifData[field]) {
+            debugMetadata(`[(128)]: Found date field ${field} for ${filename}: ${exifData[field]}`);
             try {
               metadata.timestamp = new Date(exifData[field]).toISOString();
               break;
@@ -156,6 +158,8 @@ class MetadataService {
             metadata.coordinates,
             filename
           );
+        } else {
+          debugGps(`[(207)]: No valid GPS coordinates found for ${filename}`);
         }
 
         // Extract camera info
@@ -186,9 +190,10 @@ class MetadataService {
         metadata.dimensions.resolution.y = exifData.YResolution || "not found";
       }
 
+      debugMetadata(`[(263)]: Final extracted metadata for ${filename}:`, metadata);  
       return metadata;
     } catch (error) {
-      console.error(`Error extracting metadata from ${filename}:`,  error.message);
+      debugMetadata(`Error extracting metadata from ${filename}:`,  error.message);
     }
   
 

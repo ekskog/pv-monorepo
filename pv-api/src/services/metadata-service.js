@@ -55,7 +55,7 @@ class MetadataService {
       }
 
       // Extract comprehensive metadata in one pass
-      const exifData = await exifr.parse(buffer, {
+      const parseOptions = {
         gps: true,
         pick: [
           // Date/time
@@ -95,7 +95,32 @@ class MetadataService {
           "XResolution",
           "YResolution",
         ],
-      });
+      };
+
+      // Local-only parsing: directly parse the buffer with exifr.
+      // Keep header helpers/logs for diagnostics but do not perform conversion or proxying.
+      let exifData;
+      try {
+        exifData = await exifr.parse(buffer, parseOptions);
+      } catch (err) {
+        debugMetadata(`[(48)]: exifr.parse threw for ${filename}: ${err.stack || err.message}`);
+        try {
+          debugMetadata(`[(49)]: buffer info: typeof=${typeof buffer}, isBuffer=${Buffer.isBuffer(buffer)}, length=${buffer?.length}, byteLength=${buffer?.byteLength}`);
+          debugMetadata(`[(50)]: header64: ${this.headerHex(buffer, 64)}`);
+          // Try a Uint8Array fallback (helps when exifr expects typed arrays)
+          if (Buffer.isBuffer(buffer)) {
+            const arr = new Uint8Array(buffer);
+            exifData = await exifr.parse(arr, parseOptions);
+            debugMetadata(`[(54)]: exifr.parse succeeded with Uint8Array fallback for ${filename}`);
+          } else if (buffer && buffer.buffer) {
+            exifData = await exifr.parse(buffer.buffer, parseOptions);
+            debugMetadata(`[(56)]: exifr.parse succeeded with ArrayBuffer fallback for ${filename}`);
+          }
+        } catch (fallbackErr) {
+          debugMetadata(`[(60)]: exifr fallback attempts failed for ${filename}: ${fallbackErr.stack || fallbackErr.message}`);
+          throw err;
+        }
+      }
 
       const metadata = {
         sourceImage: filename,

@@ -53,32 +53,15 @@ async function warmTemporalChannel(temporalClient) {
  */
 async function checkMinioHealth(minioClient) {
   if (!minioClient) return false;
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (result) => {
-      if (!settled) {
-        settled = true;
-        resolve(result);
-      }
-    };
-
-    // Safety timeout for the stream itself (keep below probe timeoutSeconds)
-    const timer = setTimeout(() => done(false), 3000);
-
-    try {
-      const stream = minioClient.listObjectsV2(
-        config.minio.bucketName || "pv",
-        "",
-        true
-      );
-      stream.on("data", () => { clearTimeout(timer); done(true); });
-      stream.on("end",  () => { clearTimeout(timer); done(true); });
-      stream.on("error", () => { clearTimeout(timer); done(false); });
-    } catch (err) {
-      clearTimeout(timer);
-      done(false);
-    }
-  });
+  try {
+    await Promise.race([
+      minioClient.bucketExists(config.minio.bucketName),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000))
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

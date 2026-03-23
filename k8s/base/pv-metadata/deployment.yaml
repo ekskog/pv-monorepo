@@ -23,6 +23,14 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: pv-api-secret
+          env:
+            - name: MINIO_ENDPOINT
+              value: "192.168.1.8:9000"
+            - name: MINIO_BUCKET
+              value: "photovault"
           readinessProbe:
             httpGet:
               path: /health

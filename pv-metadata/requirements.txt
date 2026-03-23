@@ -1,5 +1,7 @@
 fastapi
 uvicorn
-python-multipart
-pillow-heif
 Pillow
+pillow-heif
+python-multipart
+httpx
+minio

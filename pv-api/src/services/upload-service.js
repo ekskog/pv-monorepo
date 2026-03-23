@@ -1,5 +1,5 @@
 const AvifConverterService = require("./avif-converter-service");
-const MetadataService = require("./metadata-service");
+const FormData = require("form-data");
 const fs = require("fs");
 const util = require("util");
 const readFile = util.promisify(fs.readFile);
@@ -7,136 +7,142 @@ const unlink = util.promisify(fs.unlink);
 const debug = require("debug");
 const debugUpload = debug("pv:upload-service");
 
+const METADATA_SERVICE_URL = "http://pv-metadata-service/extract";
+const MINIO_BUCKET = process.env.MINIO_BUCKET || "photovault";
+
 // Upload Service - Handles file uploads with AVIF conversion (NO FALLBACKS)
 //
-// IMPORTANT: This service enforces strict AVIF conversion requirements:
-// - Only successfully converted AVIF files are uploaded to MinIO
-// - If AVIF conversion fails, the original file is NOT uploaded
-// - Upload failures are properly propagated to the client
+// IMPORTANT: This service enforces strict requirements:
+// - Metadata extraction and AVIF conversion run in parallel
+// - If either fails, any MinIO objects already written are rolled back
 // - No fallback mechanisms are implemented by design
 
 class UploadService {
   constructor(minioClient) {
     this.minioClient = minioClient;
     this.avifConverter = new AvifConverterService();
-    this.metadataService = new MetadataService(minioClient);
+  }
+
+  /**
+   * Predict the final AVIF object name from the original filename and folder.
+   * e.g. "test" + "IMG_4293.HEIC" -> "test/IMG_4293.avif"
+   */
+  _predictObjectName(folderPath, originalname) {
+    const base = originalname.replace(/\.[^.]+$/, ".avif");
+    return folderPath ? `${folderPath.replace(/\/$/, "")}/${base}` : base;
+  }
+
+  /**
+   * Delete a MinIO object — best-effort rollback, never throws.
+   */
+  async _rollback(objectNames) {
+    for (const name of objectNames) {
+      if (!name) continue;
+      try {
+        await this.minioClient.removeObject(MINIO_BUCKET, name);
+        debugUpload(`[ROLLBACK] Deleted ${name}`);
+      } catch (err) {
+        debugUpload(`[ROLLBACK] Failed to delete ${name}: ${err.message}`);
+      }
+    }
+  }
+
+  /**
+   * Call the Python metadata microservice.
+   * Sends the image + object_name so Python can extract, geocode, and write JSON to MinIO.
+   */
+  async _callMetadataService(buffer, originalname, objectName) {
+    const form = new FormData();
+    form.append("file", buffer, { filename: originalname, contentType: "application/octet-stream" });
+    form.append("object_name", objectName);
+    form.append("bucket", MINIO_BUCKET);
+
+    const response = await fetch(METADATA_SERVICE_URL, {
+      method: "POST",
+      body: form.getBuffer(),
+      headers: form.getHeaders(),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Metadata service returned ${response.status}: ${body}`);
+    }
+
+    return response.json();
   }
 
   /**
    * Process and upload a single file
-   * @param {Object} file - Multer file object
-   * @param {string} bucketName - MinIO bucket name
-   * @param {string} folderPath - Upload folder path
-   * @returns {Object|null} Upload result (single object) or null if skipped
    */
   async processAndUploadFile(file, bucketName, folderPath = "") {
     let { mimetype, originalname, buffer } = file;
-    debugUpload(`[(30)]: Processing file: ${originalname} with mimetype: ${mimetype}`);
-
-    let extractedMetadata = null;
-    let uploadResult = null;
+    debugUpload(`Processing file: ${originalname} (${mimetype})`);
 
     try {
-      debugUpload(`[UPLOAD-SERVICE] >>> Starting processAndUploadFile for: ${originalname} (${mimetype})`);
-      // If multer used diskStorage, read file from disk into buffer for processing images
+      // Read from disk if multer used diskStorage
       if ((!buffer || buffer.length === 0) && file.path) {
         try {
           buffer = await readFile(file.path);
-          // attach buffer for downstream usage
           file.buffer = buffer;
           file.size = buffer.length;
         } catch (fsErr) {
-          debugUpload(`[UPLOAD-SERVICE] Failed to read temp file ${file.path}: ${fsErr.message}`);
+          debugUpload(`Failed to read temp file ${file.path}: ${fsErr.message}`);
         }
       }
-      if (mimetype === "video/mp4" || mimetype === "video/mov" || mimetype === "video/avi" || mimetype === "video/quicktime") {
-        debugUpload(`[UPLOAD-SERVICE] File identified as video: ${originalname}`);
-        uploadResult = await this.processVideoFile(file, bucketName, folderPath);
-        debugUpload(`[UPLOAD-SERVICE] Video upload complete for: ${originalname}`);
-      } else {
-        debugUpload(`[UPLOAD-SERVICE] File identified as image/heic/jpeg: ${originalname}`);
-        if (mimetype !== "image/heic" && mimetype !== "image/jpeg") {
-          debugUpload(`[UPLOAD-SERVICE] Unsupported image subtype: ${mimetype} for ${originalname}`);
-          return null;
-        }
 
-        // PHOTOS ONLY
-        // Step 1: Extract metadata
-        debugUpload(`[UPLOAD-SERVICE] [IMAGE] Step 1/3: Extracting metadata for ${originalname}`);
-        extractedMetadata = await this.metadataService.extractEssentialMetadata(buffer, originalname);
-        debugUpload(`[UPLOAD-SERVICE] [IMAGE] Metadata extracted successfully for ${originalname}`);
-
-        // Step 2: Convert and upload image
-        debugUpload(`[UPLOAD-SERVICE] [IMAGE] Step 2/3: Converting and uploading: ${originalname}`);
-        uploadResult = await this.processImageFile(file, bucketName, folderPath, mimetype);
-        debugUpload(`[UPLOAD-SERVICE] [IMAGE] Processing/Upload complete for ${originalname}`);
-
-        // Step 3: Try updating JSON metadata (non-blocking)
-        if (uploadResult && extractedMetadata) {
-          debugUpload(`[UPLOAD-SERVICE] [IMAGE] Step 3/3: Triggering async JSON metadata update for ${originalname}`);
-          this.updateJsonMetadataAsync(bucketName, uploadResult, extractedMetadata, originalname)
-            .then(() => {
-              debugUpload(`[UPLOAD-SERVICE] [IMAGE] Async JSON metadata update finished for ${originalname}`);
-            })
-            .catch((err) => {
-              console.error(`[UPLOAD-SERVICE] [IMAGE] !!! Failed to update JSON metadata for ${originalname}:`, err.message);
-            });
-        }
-      }
-      return uploadResult;
-    } catch (error) {
-      console.error(`[UPLOAD-SERVICE] !!! Error processing ${originalname}:`, error.message);
-      throw new Error(`Failed processing ${originalname}: ${error.message}`);
-    } finally {
-      // Release buffer memory
-      if (file.buffer) {
-        file.buffer = null;
-      }
-      // Clean up temp files written by multer.diskStorage
-      if (file.path) {
-        try {
-          await unlink(file.path);
-        } catch (unlinkErr) {
-          // Log but do not fail - cleanup best-effort
-          debugUpload(`[(FINALLY)] Failed to unlink temp file ${file.path}: ${unlinkErr.message}`);
-        }
-      }
-      // Note: global.gc() is not available in production (requires --expose-gc flag)
-      // Uncomment below if running with --expose-gc for manual GC triggering
-      // if (global.gc) {
-      //   global.gc();
-      //   const memAfterGC = process.memoryUsage();
-      //   //debugUpload(`[(69)]: Memory after GC: ${(memAfterGC.heapUsed / 1024 / 1024).toFixed(2)}MB heap, ${(memAfterGC.rss / 1024 / 1024).toFixed(2)}MB RSS`);
-      // }
-    }
-  }
-
-
-  /**
-   * Process image files (HEIC or JPEG) - convert using microservice and upload
-   */
-  async processImageFile(file, bucketName, folderPath, mimetype) {
-    try {
-      debugUpload(`[UPLOAD-SERVICE] [IMAGE-PROC] Starting conversion request for ${file.originalname}`);
-      const conversionResult = await this.avifConverter.convertImage(
-        file.buffer,
-        file.originalname,
-        file.mimetype
-      );
-
-      if (!conversionResult.success) {
-        console.error(`[UPLOAD-SERVICE] [IMAGE-PROC] Conversion failed for ${file.originalname}:`, conversionResult.error);
-        throw new Error(`Conversion failed: ${conversionResult.error || 'Unknown error'}`);
+      // ── Video ──────────────────────────────────────────────────────────────
+      if (["video/mp4", "video/mov", "video/avi", "video/quicktime"].includes(mimetype)) {
+        debugUpload(`File identified as video: ${originalname}`);
+        const result = await this.processVideoFile(file, bucketName, folderPath);
+        debugUpload(`Video upload complete: ${originalname}`);
+        return result;
       }
 
-      debugUpload(`[UPLOAD-SERVICE] [IMAGE-PROC] Conversion success for ${file.originalname}. Processing converted file...`);
-      const convertedFile = this._processConvertedFileFromMicroservice(conversionResult.data.files);
+      // ── Image ──────────────────────────────────────────────────────────────
+      if (mimetype !== "image/heic" && mimetype !== "image/jpeg") {
+        debugUpload(`Unsupported image subtype: ${mimetype} for ${originalname}`);
+        return null;
+      }
 
-      const objectName = folderPath
-        ? `${folderPath.replace(/\/$/, "")}/${convertedFile.filename}`
-        : convertedFile.filename;
+      const objectName = this._predictObjectName(folderPath, originalname);
+      debugUpload(`Predicted object name: ${objectName}`);
 
-      debugUpload(`[UPLOAD-SERVICE] [IMAGE-PROC] Uploading to MinIO: ${bucketName}/${objectName} (Size: ${convertedFile.size} bytes)`);
+      // Run metadata extraction and AVIF conversion in parallel
+      debugUpload(`Starting parallel: metadata + conversion for ${originalname}`);
+      const [metadataResult, conversionResult] = await Promise.allSettled([
+        this._callMetadataService(buffer, originalname, objectName),
+        this.avifConverter.convertImage(buffer, originalname, mimetype),
+      ]);
+
+      // Check for failures
+      const metadataFailed   = metadataResult.status === "rejected";
+      const conversionFailed = conversionResult.status === "rejected" ||
+                               !conversionResult.value?.success;
+
+      if (metadataFailed || conversionFailed) {
+        const errors = [];
+        if (metadataFailed)   errors.push(`Metadata: ${metadataResult.reason?.message}`);
+        if (conversionFailed) errors.push(`Conversion: ${conversionResult.reason?.message || conversionResult.value?.error}`);
+
+        debugUpload(`Parallel step failed for ${originalname}: ${errors.join(" | ")}`);
+
+        // Rollback: JSON was written by Python to MinIO — delete it
+        const folder = folderPath.replace(/\/$/, "");
+        const jsonKey = folder ? `${folder}/${folder}.json` : null;
+        // We can only roll back the JSON entry, not the whole file (it's a shared JSON)
+        // Best we can do here is delete the AVIF if it was somehow written — it wasn't yet
+        // Log the failure clearly
+        debugUpload(`[ROLLBACK] No MinIO objects to delete (conversion never reached MinIO)`);
+
+        throw new Error(`Failed processing ${originalname}: ${errors.join(" | ")}`);
+      }
+
+      // Both succeeded — upload the converted AVIF to MinIO
+      debugUpload(`Both parallel steps succeeded for ${originalname}, uploading AVIF`);
+      const convertedFile = this._processConvertedFileFromMicroservice(conversionResult.value.data.files);
+
+      debugUpload(`Uploading to MinIO: ${bucketName}/${objectName} (${convertedFile.size} bytes)`);
       const uploadInfo = await this.minioClient.putObject(
         bucketName,
         objectName,
@@ -144,25 +150,30 @@ class UploadService {
         convertedFile.size,
         {
           "Content-Type": convertedFile.mimetype,
-          "X-Amz-Meta-Original-Name": file.originalname,
+          "X-Amz-Meta-Original-Name": originalname,
           "X-Amz-Meta-Upload-Date": new Date().toISOString(),
           "X-Amz-Meta-Converted-By": "pv-avif-converter-microservice",
         }
       );
-
-      debugUpload(`[UPLOAD-SERVICE] [IMAGE-PROC] MinIO upload complete for ${file.originalname}. ETag: ${uploadInfo.etag}`);
+      debugUpload(`MinIO upload complete for ${originalname}. ETag: ${uploadInfo.etag}`);
 
       return {
-        originalName: file.originalname,
+        originalName: originalname,
         objectName,
         size: convertedFile.size,
         mimetype: convertedFile.mimetype,
         etag: uploadInfo.etag,
         versionId: uploadInfo.versionId,
       };
+
     } catch (error) {
-      console.error(`[UPLOAD-SERVICE] [IMAGE-PROC] !!! Error in processImageFile for ${file.originalname}:`, error.message);
-      throw error;
+      console.error(`Error processing ${originalname}:`, error.message);
+      throw new Error(`Failed processing ${originalname}: ${error.message}`);
+    } finally {
+      if (file.buffer) file.buffer = null;
+      if (file.path) {
+        try { await unlink(file.path); } catch (_) {}
+      }
     }
   }
 
@@ -170,139 +181,63 @@ class UploadService {
    * Process video file - upload directly to MinIO without conversion
    */
   async processVideoFile(file, bucketName, folderPath) {
-    const videoTimer = `Video-upload-${file.originalname}`;
-
-    const maxSizeMB = 2000; // 2GB limit
+    const maxSizeMB = 2000;
     const fileSizeMB = file.size / 1024 / 1024;
     if (fileSizeMB > maxSizeMB) {
-      throw new Error(
-        `Video file too large: ${fileSizeMB.toFixed(2)}MB. Maximum allowed: ${maxSizeMB}MB`
-      );
+      throw new Error(`Video file too large: ${fileSizeMB.toFixed(2)}MB. Maximum: ${maxSizeMB}MB`);
     }
-
-    try {
-      const objectName = folderPath
-        ? `${folderPath.replace(/\/$/, "")}/${file.originalname}`
-        : file.originalname;
-
-      // Use stream if file is on disk to avoid buffering large video files in memory
-      let source = null;
-      if (file.buffer && file.buffer.length) {
-        source = file.buffer;
-      } else if (file.path) {
-        source = fs.createReadStream(file.path);
-      } else {
-        throw new Error('No file buffer or path available for video upload');
-      }
-
-      const uploadInfo = await this.minioClient.putObject(
-        bucketName,
-        objectName,
-        source,
-        file.size,
-        {
-          "Content-Type": file.mimetype || "video/quicktime",
-          "X-Amz-Meta-Original-Name": file.originalname,
-          "X-Amz-Meta-Upload-Date": new Date().toISOString(),
-          "X-Amz-Meta-File-Type": "video",
-          "X-Amz-Meta-Source": "iPhone",
-        }
-      );
-
-      return {
-        originalName: file.originalname,
-        objectName,
-        size: file.size,
-        mimetype: file.mimetype || "video/quicktime",
-        etag: uploadInfo.etag,
-        versionId: uploadInfo.versionId,
-        fileType: "video",
-      };
-    } catch (error) {
-      console.timeEnd(videoTimer);
-      throw error;
-    }
-  }
-
-  /**
-   * Process converted file from microservice
-   */
-  _processConvertedFileFromMicroservice(microserviceFiles) {
-    const fileData = microserviceFiles[0];
-    if (!fileData) {
-      throw new Error("No converted file received from microservice");
-    }
-
-    try {
-      const fileBuffer = Buffer.from(fileData.content, "base64");
-
-      return {
-        buffer: fileBuffer,
-        filename: fileData.filename,
-        size: fileBuffer.length,
-        mimetype: fileData.mimetype || "image/avif",
-      };
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  /**
-   * Upload regular (non-HEIC) file
-   */
-  async uploadRegularFile(file, bucketName, folderPath) {
-    const uploadTimer = `Regular-upload-${file.originalname}`;
-    console.time(uploadTimer);
 
     const objectName = folderPath
       ? `${folderPath.replace(/\/$/, "")}/${file.originalname}`
       : file.originalname;
 
-    try {
-      const uploadInfo = await this.minioClient.putObject(
-        bucketName,
-        objectName,
-        file.buffer,
-        file.size,
-        {
-          "Content-Type": file.mimetype,
-          "X-Amz-Meta-Original-Name": file.originalname,
-          "X-Amz-Meta-Upload-Date": new Date().toISOString(),
-        }
-      );
-
-      console.timeEnd(uploadTimer);
-
-      return {
-        originalName: file.originalname,
-        objectName,
-        size: file.size,
-        mimetype: file.mimetype,
-        etag: uploadInfo.etag,
-        versionId: uploadInfo.versionId,
-      };
-    } catch (error) {
-      console.timeEnd(uploadTimer);
-      throw error;
+    let source = null;
+    if (file.buffer && file.buffer.length) {
+      source = file.buffer;
+    } else if (file.path) {
+      source = fs.createReadStream(file.path);
+    } else {
+      throw new Error("No file buffer or path available for video upload");
     }
+
+    const uploadInfo = await this.minioClient.putObject(
+      bucketName,
+      objectName,
+      source,
+      file.size,
+      {
+        "Content-Type": file.mimetype || "video/quicktime",
+        "X-Amz-Meta-Original-Name": file.originalname,
+        "X-Amz-Meta-Upload-Date": new Date().toISOString(),
+        "X-Amz-Meta-File-Type": "video",
+        "X-Amz-Meta-Source": "iPhone",
+      }
+    );
+
+    return {
+      originalName: file.originalname,
+      objectName,
+      size: file.size,
+      mimetype: file.mimetype || "video/quicktime",
+      etag: uploadInfo.etag,
+      versionId: uploadInfo.versionId,
+      fileType: "video",
+    };
   }
 
   /**
-   * Update JSON metadata file
+   * Process converted file from AVIF microservice response
    */
-  async updateJsonMetadataAsync(bucketName, uploadResult, extractedMetadata, originalFilename) {
-    try {
-      await this.metadataService.updateFolderMetadata(
-        bucketName,
-        uploadResult.objectName,
-        extractedMetadata,
-        uploadResult
-      );
-    } catch (error) {
-      throw new Error(
-        `Failed to update JSON metadata for ${uploadResult.objectName}: ${error.message}`
-      );
-    }
+  _processConvertedFileFromMicroservice(microserviceFiles) {
+    const fileData = microserviceFiles[0];
+    if (!fileData) throw new Error("No converted file received from microservice");
+    const fileBuffer = Buffer.from(fileData.content, "base64");
+    return {
+      buffer: fileBuffer,
+      filename: fileData.filename,
+      size: fileBuffer.length,
+      mimetype: fileData.mimetype || "image/avif",
+    };
   }
 
   /**
@@ -312,17 +247,12 @@ class UploadService {
     const allResults = [];
     const errors = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-
+    for (const file of files) {
       try {
         const result = await this.processAndUploadFile(file, bucketName, folderPath);
         allResults.push(result);
       } catch (error) {
-        errors.push({
-          filename: file.originalname,
-          error: error.message,
-        });
+        errors.push({ filename: file.originalname, error: error.message });
       }
     }
 

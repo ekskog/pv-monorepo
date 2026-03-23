@@ -1,5 +1,4 @@
 import { promises as fs } from 'fs';
-import FormData from 'form-data';
 
 const METADATA_SERVICE_URL = process.env.METADATA_SERVICE_URL ||
   'http://pv-metadata-service.pv.svc.cluster.local/extract';
@@ -25,14 +24,14 @@ export async function extractAndPersistMetadata(
   const imageBuffer = await fs.readFile(imagePath);
 
   const form = new FormData();
-  form.append('file', imageBuffer, { filename, contentType: 'application/octet-stream' });
-  form.append('object_name', objectName);
-  form.append('bucket', MINIO_BUCKET);
+  const blob = new Blob([imageBuffer], { type: 'application/octet-stream' });
+  form.set('file', blob, filename);
+  form.set('object_name', objectName);
+  form.set('bucket', MINIO_BUCKET);
 
   const response = await fetch(METADATA_SERVICE_URL, {
     method: 'POST',
-    body: form.getBuffer(),
-    headers: form.getHeaders(),
+    body: form,
     signal: AbortSignal.timeout(30000),
   });
 

@@ -32,11 +32,23 @@ const database = require("../services/database-service");
 async function warmTemporalChannel(temporalClient) {
   if (!temporalClient) return;
   try {
-    // Asking the channel to transition out of IDLE triggers a TCP handshake
-    // and TLS negotiation so subsequent calls find a ready connection.
-    const channel = temporalClient.workflowService.client.getChannel();
-    channel.getConnectivityState(true); // true = try to connect
-    debugHealth("Temporal gRPC channel warm-up requested");
+    // Try the low-level channel API if available; otherwise fall back to
+    // a single describeNamespace call which also forces the gRPC channel
+    // to establish a connection.
+    const channelClient = temporalClient.workflowService && temporalClient.workflowService.client;
+    if (channelClient && typeof channelClient.getChannel === 'function') {
+      const channel = channelClient.getChannel();
+      if (channel && typeof channel.getConnectivityState === 'function') {
+        channel.getConnectivityState(true); // true = try to connect
+        debugHealth("Temporal gRPC channel warm-up requested (via getChannel)");
+      }
+    } else {
+      // Fallback: perform a lightweight describeNamespace to warm the channel
+      await temporalClient.workflowService.describeNamespace({
+        namespace: config.temporal?.namespace || "default",
+      });
+      debugHealth("Temporal warm-up via describeNamespace succeeded");
+    }
   } catch (err) {
     debugHealth("Temporal channel warm-up failed (non-fatal):", err.message);
   }

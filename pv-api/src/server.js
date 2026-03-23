@@ -394,9 +394,8 @@ async function startServer() {
 
     // Warm the Temporal gRPC channel to avoid cold-start timeouts in health checks
     try {
-      const healthModule = require("./routes/health");
-      if (healthModule && typeof healthModule.warmTemporalChannel === "function") {
-        healthModule.warmTemporalChannel(temporalClient);
+      if (healthRoutes && typeof healthRoutes.warmTemporalChannel === "function") {
+        healthRoutes.warmTemporalChannel(temporalClient);
       }
     } catch (err) {
       debugServer("warmTemporalChannel invocation failed:", err.message);

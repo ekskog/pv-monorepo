@@ -15,34 +15,32 @@ spec:
       labels:
         app: pv-metadata
     spec:
-      # Use the secret created by your GH Action to pull from GHCR
       imagePullSecrets:
         - name: ghcr-secret
       containers:
-      - name: pv-metadata
-        image: ghcr.io/ekskog/pv-metadata:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
-        # Basic health checks to ensure FastAPI is up before sending traffic
-        readinessProbe:
-          httpGet:
-            path: /docs  # FastAPI auto-generates this, easy health check
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        livenessProbe:
-          httpGet:
-            path: /docs
-            port: 8000
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-
-
+        - name: pv-metadata
+          image: ghcr.io/ekskog/pv-metadata:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

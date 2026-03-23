@@ -23,6 +23,10 @@ def dms_to_decimal(coords, ref):
 
 @app.post("/extract")
 async def extract_metadata(file: UploadFile = File(...)):
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
     if not file.filename.lower().endswith(('.heic', '.heif')):
         raise HTTPException(status_code=400, detail="Only HEIC/HEIF files supported")
 

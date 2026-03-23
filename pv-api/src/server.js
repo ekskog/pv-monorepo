@@ -392,6 +392,92 @@ async function startServer() {
     let connectionPool = await initializeDatabase();
     await initTemporal();
 
+    // Warm the Temporal gRPC channel to avoid cold-start timeouts in health checks
+    try {
+      const healthModule = require("./routes/health");
+      if (healthModule && typeof healthModule.warmTemporalChannel === "function") {
+        healthModule.warmTemporalChannel(temporalClient);
+      }
+    } catch (err) {
+      debugServer("warmTemporalChannel invocation failed:", err.message);
+    }
+
+    // Add a startup dependency check to log the status of external services
+    async function checkAllDependencies() {
+      const results = {};
+
+      // MinIO
+      results.minio = false;
+      try {
+        if (minioClient) {
+          await Promise.race([
+            minioClient.bucketExists(config.minio.bucketName),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+          ]);
+          results.minio = true;
+        }
+      } catch (e) {
+        debugServer('Dependency check: MinIO failed:', e.message || e);
+      }
+
+      // Database
+      results.database = false;
+      try {
+        results.database = Boolean(await database.isHealthy());
+      } catch (e) {
+        debugServer('Dependency check: Database failed:', e.message || e);
+      }
+
+      // Temporal
+      results.temporal = false;
+      try {
+        if (temporalClient) {
+          const TEMPORAL_TIMEOUT_MS = 4000;
+          await Promise.race([
+            temporalClient.workflowService.describeNamespace({
+              namespace: config.temporal?.namespace || 'default',
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error(`Temporal gRPC timeout after ${TEMPORAL_TIMEOUT_MS} ms`)), TEMPORAL_TIMEOUT_MS)),
+          ]);
+          results.temporal = true;
+        }
+      } catch (e) {
+        debugServer('Dependency check: Temporal failed:', e.message || e);
+      }
+
+      // Converter
+      results.converter = false;
+      try {
+        if (config.converter && config.converter.url) {
+          const timeout = Math.min(parseInt(config.converter.timeout, 10) || 4000, 4000);
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeout);
+          try {
+            const r = await fetch(`${config.converter.url}/health`, { signal: controller.signal });
+            results.converter = Boolean(r && r.ok);
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+      } catch (e) {
+        debugServer('Dependency check: Converter failed:', e.message || e);
+      }
+
+      // Log a compact status summary
+      debugServer('Dependency status at startup: ', results);
+      return results;
+    }
+
+    const deps = await checkAllDependencies();
+    try {
+      const dependencyStatus = require("./services/dependency-status");
+      if (dependencyStatus && typeof dependencyStatus.set === "function") {
+        dependencyStatus.set(deps);
+      }
+    } catch (e) {
+      debugServer('Failed to persist startup dependency status:', e.message || e);
+    }
+
     app.use("/bulk", temporalRoutes(temporalClient, config));
     app.use("/", healthRoutes(minioClient, temporalClient));
 

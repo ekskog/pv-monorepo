@@ -119,6 +119,8 @@ async function checkConverterHealth() {
 // Main handler
 // ---------------------------------------------------------------------------
 
+const dependencyStatus = require('../services/dependency-status');
+
 const healthCheck = (minioClient, temporalClient) => async (req, res) => {
   // Run all checks concurrently so total latency ≈ slowest single check
   const [minioResult, databaseResult, temporalResult, converterResult] =
@@ -156,6 +158,7 @@ const healthCheck = (minioClient, temporalClient) => async (req, res) => {
     status: isReady ? "healthy" : "degraded",
     timestamp: new Date().toISOString(),
     ready: isReady,
+    startupDependencies: dependencyStatus.get() || null,
     services: {
       minio:     { connected: minioHealthy },
       database:  { connected: databaseHealthy },

@@ -10,13 +10,6 @@ const debugUpload = debug("pv:upload-service");
 const METADATA_SERVICE_URL = "http://pv-metadata-service/extract";
 const MINIO_BUCKET = process.env.MINIO_BUCKET || "photovault";
 
-// Upload Service - Handles file uploads with AVIF conversion (NO FALLBACKS)
-//
-// IMPORTANT: This service enforces strict requirements:
-// - Metadata extraction and AVIF conversion run in parallel
-// - If either fails, any MinIO objects already written are rolled back
-// - No fallback mechanisms are implemented by design
-
 class UploadService {
   constructor(minioClient) {
     this.minioClient = minioClient;
@@ -24,7 +17,7 @@ class UploadService {
   }
 
   /**
-   * Predict the final AVIF object name from the original filename and folder.
+   * Predict the final AVIF object name from folder + original filename.
    * e.g. "test" + "IMG_4293.HEIC" -> "test/IMG_4293.avif"
    */
   _predictObjectName(folderPath, originalname) {
@@ -33,14 +26,16 @@ class UploadService {
   }
 
   /**
-   * Delete a MinIO object — best-effort rollback, never throws.
+   * Roll back MinIO objects written by the microservices.
+   * Deletes AVIF and the image's entry cannot be individually removed from the JSON,
+   * so we delete the whole JSON key only if it was freshly created (best effort).
    */
   async _rollback(objectNames) {
     for (const name of objectNames) {
       if (!name) continue;
       try {
         await this.minioClient.removeObject(MINIO_BUCKET, name);
-        debugUpload(`[ROLLBACK] Deleted ${name}`);
+        debugUpload(`[ROLLBACK] Deleted ${MINIO_BUCKET}/${name}`);
       } catch (err) {
         debugUpload(`[ROLLBACK] Failed to delete ${name}: ${err.message}`);
       }
@@ -49,7 +44,6 @@ class UploadService {
 
   /**
    * Call the Python metadata microservice.
-   * Sends the image + object_name so Python can extract, geocode, and write JSON to MinIO.
    */
   async _callMetadataService(buffer, originalname, objectName) {
     const form = new FormData();
@@ -73,7 +67,7 @@ class UploadService {
   }
 
   /**
-   * Process and upload a single file
+   * Process and upload a single file.
    */
   async processAndUploadFile(file, bucketName, folderPath = "") {
     let { mimetype, originalname, buffer } = file;
@@ -112,11 +106,10 @@ class UploadService {
       debugUpload(`Starting parallel: metadata + conversion for ${originalname}`);
       const [metadataResult, conversionResult] = await Promise.allSettled([
         this._callMetadataService(buffer, originalname, objectName),
-        this.avifConverter.convertImage(buffer, originalname, mimetype),
+        this.avifConverter.convertImage(buffer, originalname, mimetype, objectName, bucketName),
       ]);
 
-      // Check for failures
-      const metadataFailed   = metadataResult.status === "rejected";
+      const metadataFailed   = metadataResult.status   === "rejected";
       const conversionFailed = conversionResult.status === "rejected" ||
                                !conversionResult.value?.success;
 
@@ -124,46 +117,23 @@ class UploadService {
         const errors = [];
         if (metadataFailed)   errors.push(`Metadata: ${metadataResult.reason?.message}`);
         if (conversionFailed) errors.push(`Conversion: ${conversionResult.reason?.message || conversionResult.value?.error}`);
-
         debugUpload(`Parallel step failed for ${originalname}: ${errors.join(" | ")}`);
 
-        // Rollback: JSON was written by Python to MinIO — delete it
-        const folder = folderPath.replace(/\/$/, "");
-        const jsonKey = folder ? `${folder}/${folder}.json` : null;
-        // We can only roll back the JSON entry, not the whole file (it's a shared JSON)
-        // Best we can do here is delete the AVIF if it was somehow written — it wasn't yet
-        // Log the failure clearly
-        debugUpload(`[ROLLBACK] No MinIO objects to delete (conversion never reached MinIO)`);
+        // Rollback whatever was written to MinIO
+        const toDelete = [];
+        if (!conversionFailed) toDelete.push(objectName);           // AVIF was written
+        if (!metadataFailed)   toDelete.push(_jsonKey(folderPath));  // JSON was written
+        await this._rollback(toDelete);
 
         throw new Error(`Failed processing ${originalname}: ${errors.join(" | ")}`);
       }
 
-      // Both succeeded — upload the converted AVIF to MinIO
-      debugUpload(`Both parallel steps succeeded for ${originalname}, uploading AVIF`);
-      const convertedFile = this._processConvertedFileFromMicroservice(conversionResult.value.data.files);
-
-      debugUpload(`Uploading to MinIO: ${bucketName}/${objectName} (${convertedFile.size} bytes)`);
-      const uploadInfo = await this.minioClient.putObject(
-        bucketName,
-        objectName,
-        convertedFile.buffer,
-        convertedFile.size,
-        {
-          "Content-Type": convertedFile.mimetype,
-          "X-Amz-Meta-Original-Name": originalname,
-          "X-Amz-Meta-Upload-Date": new Date().toISOString(),
-          "X-Amz-Meta-Converted-By": "pv-avif-converter-microservice",
-        }
-      );
-      debugUpload(`MinIO upload complete for ${originalname}. ETag: ${uploadInfo.etag}`);
+      debugUpload(`Both parallel steps succeeded for ${originalname}`);
 
       return {
         originalName: originalname,
         objectName,
-        size: convertedFile.size,
-        mimetype: convertedFile.mimetype,
-        etag: uploadInfo.etag,
-        versionId: uploadInfo.versionId,
+        mimetype: "image/avif",
       };
 
     } catch (error) {
@@ -226,21 +196,6 @@ class UploadService {
   }
 
   /**
-   * Process converted file from AVIF microservice response
-   */
-  _processConvertedFileFromMicroservice(microserviceFiles) {
-    const fileData = microserviceFiles[0];
-    if (!fileData) throw new Error("No converted file received from microservice");
-    const fileBuffer = Buffer.from(fileData.content, "base64");
-    return {
-      buffer: fileBuffer,
-      filename: fileData.filename,
-      size: fileBuffer.length,
-      mimetype: fileData.mimetype || "image/avif",
-    };
-  }
-
-  /**
    * Process multiple files in batch
    */
   async processMultipleFiles(files, bucketName, folderPath = "") {
@@ -258,6 +213,12 @@ class UploadService {
 
     return { results: allResults, errors };
   }
+}
+
+// Helper — derive the JSON key from the folder path
+function _jsonKey(folderPath) {
+  const folder = folderPath.replace(/\/$/, "");
+  return folder ? `${folder}/${folder}.json` : null;
 }
 
 module.exports = UploadService;

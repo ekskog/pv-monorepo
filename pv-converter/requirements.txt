@@ -4,3 +4,4 @@ Pillow
 pillow-heif
 psutil
 python-multipart
+minio

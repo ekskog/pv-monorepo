@@ -1,127 +1,76 @@
 const debug = require("debug");
-// Debug namespaces
 const debugConverter = debug("pv:converter");
-const config = require('../config'); // defaults to ./config/index.js
+const config = require('../config');
 
 class AvifConverterService {
   constructor() {
-    // Consolidated microservice configuration
     this.converterUrl = config.converter.url;
     this.converterTimeout = parseInt(config.converter.timeout);
   }
 
-  /**
-   * Check if the converter microservice is healthy
-   * @returns {Object} Health check result
-   */
   async checkHealth() {
     try {
       const response = await fetch(`${this.converterUrl}/health`, {
         method: 'GET',
-        timeout: 60000 // 1 minute timeout for health checks
+        signal: AbortSignal.timeout(60000),
       });
-
-      if (!response.ok) {
-        throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      return {
-        success: true,
-        data: data
-      };
+      if (!response.ok) throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
+      return { success: true, data: await response.json() };
     } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
+      return { success: false, error: error.message };
     }
   }
 
   /**
-  * Convert an image file to AVIF using the microservice
-  * @param {Buffer} fileBuffer - Image file buffer
-  * @param {string} originalName - Original filename
-  * @param {string} mimeType - Original file MIME type
-  * @param {boolean} returnContents - Whether to return file contents or just paths
-  * @returns {Object} Conversion result with AVIF files
-  */
-  async convertImage(fileBuffer, originalName, mimeType, returnContents = true) {
+   * Convert an image to AVIF and write it directly to MinIO.
+   * Returns { success, object_name } — no base64 content.
+   */
+  async convertImage(fileBuffer, originalName, mimeType, objectName, bucket) {
     debugConverter(`[AVIF-CONVERTER] >>> Starting conversion request for ${originalName} to ${this.converterUrl}`);
     try {
-      const endpoint = '/convert';
       const formData = new FormData();
       const blob = new Blob([fileBuffer], { type: mimeType });
       formData.append('image', blob, originalName);
       formData.append('mimeType', mimeType);
+      formData.append('object_name', objectName);
+      formData.append('bucket', bucket);
 
-      debugConverter(`[AVIF-CONVERTER] Sending POST to ${this.converterUrl}${endpoint}...`);
-      const response = await fetch(`${this.converterUrl}${endpoint}`, {
+      debugConverter(`[AVIF-CONVERTER] Sending POST to ${this.converterUrl}/convert...`);
+      const response = await fetch(`${this.converterUrl}/convert`, {
         method: 'POST',
         body: formData,
-        timeout: this.converterTimeout
+        signal: AbortSignal.timeout(this.converterTimeout),
       });
+
       debugConverter(`[AVIF-CONVERTER] Received ${response.status} from converter for ${originalName}`);
-      //debugConverter(`[(65)] Received ${response.status} | ${response.statusText} from converter for ${originalName}`);
+
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Conversion failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const responseData = await response.json();
-
       if (!responseData.success) {
         throw new Error(`Conversion failed: ${responseData.error || 'Unknown error'}`);
       }
 
-      const baseName = originalName.replace(/\.(jpg|jpeg|heic)$/i, '');
-      const files = [];
-      files.push({
-        filename: `${baseName}.avif`,
-        content: responseData.data.content,
-        size: responseData.data.size,
-        mimetype: 'image/avif',
-        variant: 'full'
-      });
-
-      return {
-        success: true,
-        data: {
-          files: files
-        }
-      };
-
+      return { success: true, object_name: responseData.object_name };
     } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
+      return { success: false, error: error.message };
     }
   }
 
-  /**
-   * Check health of the converter service
-   * @returns {Object} Health check result
-   */
   async checkAllServicesHealth() {
     const health = await this.checkHealth();
-    const result = {
+    return {
       converter: health,
       overallStatus: health.success ? 'healthy' : 'degraded'
     };
-
-    return result;
   }
 
-  /**
-   * Check if the microservice is available and responding
-   * @returns {boolean} True if the microservice is available
-   */
   async isAvailable() {
     const health = await this.checkHealth();
-    const available = health.success;
-    return available;
+    return health.success;
   }
 }
 

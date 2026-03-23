@@ -1,21 +1,21 @@
 # rebuild image on 06.03.2026 / 13.33
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import Response
 from converter import convert_to_avif
+from minio import Minio
+from minio.error import S3Error
 import psutil
 import os
 import subprocess
-import base64
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import tracemalloc
 import time
 import gc
+import io
 
 app = FastAPI()
 
-# force rebuild image
-# 🔧 Enable logging with visible formatting and file output
 log_dir = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(log_dir, exist_ok=True)
 log_path = os.path.join(log_dir, "converter.log")
@@ -26,21 +26,26 @@ stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(formatter)
 
 file_handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1, backupCount=30, utc=True, encoding="utf-8")
-# Use a date suffix for archived log files: converter.log -> converter.log.2026-02-06
 file_handler.suffix = "%Y-%m-%d"
 file_handler.setFormatter(formatter)
 
 logging.basicConfig(level=logging.INFO, handlers=[stream_handler, file_handler])
 
-# 🚫 Filter access logs from /health
 class HealthEndpointFilter(logging.Filter):
     def filter(self, record):
         return "/health" not in record.getMessage()
 
 logging.getLogger("uvicorn.access").addFilter(HealthEndpointFilter())
 
+# MinIO client
+minio_client = Minio(
+    endpoint=os.environ["MINIO_ENDPOINT"],
+    access_key=os.environ["MINIO_ACCESS_KEY"],
+    secret_key=os.environ["MINIO_SECRET_KEY"],
+    secure=False,
+)
+
 def get_memory_info():
-    """Get current memory usage information"""
     process = psutil.Process(os.getpid())
     memory_info = process.memory_info()
     return {
@@ -51,13 +56,10 @@ def get_memory_info():
 
 @app.get("/health")
 async def health_check():
-    # logging.info("[HEALTH] Running health check")
     avifenc_available = False
-
     try:
         result = subprocess.run(["avifenc", "--version"], capture_output=True, text=True, timeout=5)
         avifenc_available = result.returncode == 0
-        # logging.info(f"[HEALTH] avifenc available: {avifenc_available}")
     except subprocess.TimeoutExpired:
         logging.error("[HEALTH] avifenc check timed out")
     except Exception as e:
@@ -65,7 +67,6 @@ async def health_check():
 
     try:
         memory = get_memory_info()
-        #logging.info(f"[HEALTH] Memory info: {memory}")
     except Exception as e:
         logging.error(f"[HEALTH] Error fetching memory info: {e}")
         memory = {"error": str(e)}
@@ -74,15 +75,16 @@ async def health_check():
         "status": "healthy" if avifenc_available else "unhealthy",
         "service": "pv-avif-converter",
         "memory": memory,
-        "capabilities": {
-            "avifenc": avifenc_available
-        }
+        "capabilities": {"avifenc": avifenc_available}
     }
 
 @app.post("/convert")
-async def convert_image(image: UploadFile = File(...)):
-    logging.info("[CONVERT] Request received")
-    #logging.info(f"[CONVERT] Uploaded file: {image.filename}, type={image.content_type}")
+async def convert_image(
+    image: UploadFile = File(...),
+    object_name: str = Form(...),   # e.g. "test/IMG_4293.avif"
+    bucket: str = Form(...),
+):
+    logging.info(f"[CONVERT] Request received for {image.filename} -> {object_name}")
 
     memory_before = get_memory_info()
     logging.info(f"[CONVERT] Memory before conversion: {memory_before}")
@@ -116,20 +118,27 @@ async def convert_image(image: UploadFile = File(...)):
     logging.info(f"[CONVERT] Peak memory during conversion: {peak / 1024 / 1024:.2f}MB")
     logging.info(f"[CONVERT] Conversion time: {end_time - start_time:.2f}s")
 
-    base64_content = base64.b64encode(avif_data).decode('utf-8')
+    # Write AVIF directly to MinIO
+    try:
+        minio_client.put_object(
+            bucket,
+            object_name,
+            io.BytesIO(avif_data),
+            length=len(avif_data),
+            content_type="image/avif",
+        )
+        logging.info(f"[CONVERT] Written to MinIO: {bucket}/{object_name}")
+    except Exception as e:
+        logging.error(f"[CONVERT] MinIO write failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"MinIO write failed: {str(e)}")
 
     return {
         "success": True,
+        "object_name": object_name,
         "metrics": {
             "memoryBeforeMB": memory_before,
             "memoryAfterMB": memory_after,
             "peakMemoryMB": round(peak / 1024 / 1024, 2),
             "conversionTimeSec": round(end_time - start_time, 2)
-        },
-        "data": {
-                "filename": image.filename,
-                "content": base64_content,
-                "size": len(avif_data),
-                "mimetype": "image/avif"
         }
     }

@@ -171,16 +171,28 @@
       @previous-video="previousVideo"
       @delete-video="confirmDeleteVideo"
     />
+
+    <!-- Toasts -->
+    <div class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 items-end" aria-live="polite">
+      <div
+        v-for="t in toasts"
+        :key="t.id"
+        class="max-w-xs w-full bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg border border-gray-800"
+      >
+        {{ t.message }}
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick } from "vue";
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import apiService from "../services/api.js";
 import authService from "../services/auth.js";
 import SSEService from "../services/sseService.js";
 import WorkflowStatusService from "../services/workflowStatusService.js";
-import userSettings from "../services/userSettings.js";
+import { useUserSettings } from "../composables/useUserSettings";
+import { useToast } from "../composables/useToast";
 
 import AlbumHeader from "./AlbumHeader.vue";
 import MediaUpload from "./MediaUpload.vue";
@@ -229,6 +241,11 @@ const processingMode = ref(null);
 let sseService = null;
 let workflowStatusService = null;
 let _userSettingsUnsub = null;
+
+// Readable user settings (reactive)
+const { settings } = useUserSettings();
+// Toasts
+const { toasts, showToast } = useToast();
 
 // NEW: Sort order state
 const sortOrder = ref('chronological'); // 'chronological' or 'reverse'
@@ -318,14 +335,21 @@ const handleJobReady = (payload) => {
 
 const handleUploadDialogClose = (payload) => {
   showUploadDialog.value = false;
-  if (payload?.filesCount && payload?.mode !== 'temporal-bulk') {
-    const monitor = userSettings.get('monitorNonBulkUploads');
-    if (monitor) {
-      processingNotifications.value = true;
-      processingStatus.value = `Waiting for job ID...`;
+  if (payload?.filesCount) {
+    if (payload.mode === 'temporal-bulk') {
+      // Bulk upload: inform user they can monitor bulk jobs
+      showBulkUploadNotification(payload.jobId || payload.workflowId || payload.batchId);
     } else {
-      processingNotifications.value = false;
-      processingStatus.value = '';
+      const monitor = settings.monitorNonBulkUploads;
+      if (monitor) {
+        processingNotifications.value = true;
+        processingStatus.value = `Waiting for job ID...`;
+      } else {
+        processingNotifications.value = false;
+        processingStatus.value = '';
+        // Inform the user via an in-app toast that processing continues in background
+        showBackgroundProcessingNotification();
+      }
     }
   }
 };
@@ -662,7 +686,7 @@ const preloadVisibleImages = () => {
 // Legacy SSE integration
 const startSseProcessingListener = (jobId) => {
   // Respect user preference: do not monitor legacy (non-bulk) uploads if disabled
-  const monitor = userSettings.get('monitorNonBulkUploads');
+  const monitor = settings.monitorNonBulkUploads;
   if (!monitor) {
     console.log('[ALBUM VIEWER DEBUG] SSE monitoring disabled by user preference, skipping SSE for job:', jobId);
     // still set job id so other logic can reference it, but do not open SSE or show notifications
@@ -698,12 +722,24 @@ const startWorkflowStatusListener = (workflowId) => {
     console.log('[ALBUM VIEWER DEBUG] Already polling workflow:', workflowId);
     return;
   }
-
+  // Respect user preference for bulk (temporal) workflow monitoring
+  const monitorBulk = settings.monitorBulkUploads;
   processingJobId.value = workflowId;
-  // Temporal bulk mode is intentionally silent in the album UI for now.
-  processingNotifications.value = false;
-  processingStatus.value = '';
   processingProgress.value = 0;
+
+  if (!monitorBulk) {
+    console.log('[ALBUM VIEWER DEBUG] Bulk monitoring disabled by user preference, skipping polling for workflow:', workflowId);
+    // keep job id for reference but do not start polling; inform user processing continues in background
+    pendingJobId.value = workflowId;
+    processingNotifications.value = false;
+    processingStatus.value = '';
+    showBackgroundProcessingNotification();
+    return;
+  }
+
+  // If monitoring enabled, show a brief processing UI and start polling
+  processingNotifications.value = true;
+  processingStatus.value = 'Starting bulk processing...';
 
   workflowStatusService?.stop();
   workflowStatusService = new WorkflowStatusService(
@@ -879,16 +915,75 @@ const showProcessingCompleteNotification = () => {
   }
 };
 
+// Inform user that uploads will be processed in background when monitoring is disabled
+const showBackgroundProcessingNotification = () => {
+  const title = "Photos processing in background";
+  const body = "Your upload is being processed in the background and will appear in the album when ready.";
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body, icon: "/favicon.ico" });
+  } else {
+    // Use in-app toast for a native-like, non-blocking notification
+    try {
+      showToast(`${title}: ${body}`);
+    } catch (e) {
+      // Fallback to alert if toasts fail for any reason
+      setTimeout(() => {
+        try { window.alert(`${title}\n\n${body}`); } catch (err) { console.log(title, body); }
+      }, 100);
+    }
+  }
+};
+
+// Notify user for bulk uploads and suggest Bulk Jobs monitoring page
+const showBulkUploadNotification = (workflowId) => {
+  const title = "Bulk upload accepted";
+  const body = "Your bulk upload has been accepted. You can monitor bulk jobs on the Bulk Jobs page (header → Bulk Jobs).";
+  const message = workflowId ? `${title}: ${body} (job: ${workflowId})` : `${title}: ${body}`;
+
+  if ("Notification" in window && Notification.permission === "granted") {
+    const n = new Notification(title, { body, icon: "/favicon.ico" });
+    n.onclick = () => {
+      try { window.focus(); } catch (e) {}
+      // Optionally navigate to bulk jobs if app router listens to window focus/navigation
+    };
+  } else {
+    try {
+      showToast(message);
+    } catch (e) {
+      setTimeout(() => { try { window.alert(`${title}\n\n${body}`); } catch (err) { console.log(title, body); } }, 100);
+    }
+  }
+};
+
 onMounted(async () => {
   console.log("[AlbumViewer] Mounted with album:", props.albumName);
   await loadPhotos();
-  // Subscribe to user settings changes so we can stop SSE if user disables monitoring
-  _userSettingsUnsub = userSettings.onChange((newSettings) => {
-    if (!newSettings.monitorNonBulkUploads && processingMode.value === 'legacy-sse') {
-      console.log('[ALBUM VIEWER DEBUG] User disabled SSE monitoring; stopping SSE listener.');
-      stopProcessingListener();
+  // Watch user settings so we can stop SSE or workflow polling if user disables monitoring
+  const stop1 = watch(
+    () => settings.monitorNonBulkUploads,
+    (newVal) => {
+      if (!newVal && processingMode.value === 'legacy-sse') {
+        console.log('[ALBUM VIEWER DEBUG] User disabled SSE monitoring; stopping SSE listener.');
+        stopProcessingListener();
+      }
     }
-  });
+  );
+
+  const stop2 = watch(
+    () => settings.monitorBulkUploads,
+    (newVal) => {
+      if (!newVal && processingMode.value === 'temporal-bulk') {
+        console.log('[ALBUM VIEWER DEBUG] User disabled bulk monitoring; stopping workflow polling.');
+        stopProcessingListener();
+      }
+      if (newVal && processingMode.value === 'temporal-bulk' && pendingJobId.value) {
+        console.log('[ALBUM VIEWER DEBUG] User enabled bulk monitoring; starting workflow polling for pending job.');
+        startWorkflowStatusListener(pendingJobId.value);
+      }
+    }
+  );
+
+  _userSettingsUnsub = () => { try { stop1(); stop2(); } catch(e){} };
   setTimeout(() => {
     startAggressivePreloading();
     preloadVisibleImages();

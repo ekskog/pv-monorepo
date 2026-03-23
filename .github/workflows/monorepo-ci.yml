@@ -213,7 +213,7 @@ jobs:
       - name: Wait for rollout
         if: (steps.changed.outputs.changed == 'true' || steps.changed.outputs.manifests_changed == 'true') && steps.deploy.outputs.has_kubeconfig == 'true' && matrix.deployment != ''
         run: |
-          kubectl rollout status deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml --timeout=300s
+          kubectl rollout status deployment/${{ matrix.deployment }} --namespace=pv --kubeconfig=kubeconfig.yaml --timeout=600s
 
       - name: Cleanup
         if: always()

@@ -1,24 +1,20 @@
 import { proxyActivities, log } from '@temporalio/workflow';
-// Use type imports for the underlying function signatures
 import type * as convertDeps from '../activities/convertImage';
-import type * as persistDeps from '../activities/persistToMinio';
 import type * as metadataDeps from '../activities/metadataActivity';
+import type * as persistDeps from '../activities/persistToMinio';
 
-// 1. Unified type for the proxy. 
-// Note: cleanupBatch MUST be exported in one of these files.
-type AllActivities = typeof convertDeps & typeof persistDeps & typeof metadataDeps;
+type AllActivities = typeof convertDeps & typeof metadataDeps & typeof persistDeps;
 
-const { convertImage, persistToMinio, persistMetadataForImage, cleanupBatch } = proxyActivities<AllActivities>({
-  startToCloseTimeout: '60 minutes',
-  retry: { maximumAttempts: 5 }
-});
+const { convertImage, extractAndPersistMetadata, cleanupBatch } =
+  proxyActivities<AllActivities>({
+    startToCloseTimeout: '60 minutes',
+    retry: { maximumAttempts: 5 },
+  });
 
-// 2. Local Interfaces (Restored to prevent 'Cannot find name' errors)
 export interface ImageFile {
   filename: string;
   path: string;
   contentType: string;
-  metadata?: Record<string, unknown>;
 }
 
 export interface BatchInput {
@@ -33,13 +29,22 @@ export interface BatchResult {
   totalImages: number;
   successful: number;
   failed: number;
-  metadataPersisted: number;
   results: any[];
   processingTimeMs: number;
 }
 
 /**
- * Main workflow - orchestrates batch image conversion and MinIO persistence
+ * Predict the final AVIF object name.
+ * e.g. albumName="test", filename="IMG_4293.HEIC" -> "test/IMG_4293.avif"
+ */
+function predictObjectName(albumName: string, filename: string): string {
+  const base = filename.replace(/\.[^.]+$/, '.avif');
+  return `${albumName}/${base}`;
+}
+
+/**
+ * Main workflow — orchestrates parallel metadata + conversion for each image,
+ * with rollback on failure.
  */
 export async function processBatchImages(input: BatchInput): Promise<BatchResult> {
   const startTime = Date.now();
@@ -49,81 +54,67 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
   if (!albumName) {
     throw new Error(`Missing albumName/folder for batch ${batchId}`);
   }
-  
-  log.info(`Starting batch ${batchId} with ${images.length} images`);
-  log.info(`Album destination: ${albumName}`);
-  
-  // 3. Typed Map (Fixes 'image' implicitly has 'any' type)
-  const conversionPromises = images.map(async (image: ImageFile) => {
-    try {
-      const result = await convertImage(image);
-      
-      // We check success and the presence of avifPath (returned by convertImage)
-      if (result.success && 'avifPath' in result) {
-        log.info(`↑ Uploading ${image.filename} to MinIO...`);
-        
-        const storageInfo = await persistToMinio(
-          result.avifPath,
-          image.filename, 
-          albumName
-        );
 
-        // Keep metadata sync non-fatal, matching API non-blocking behavior.
-        try {
-          const metadataOk = await persistMetadataForImage(image.metadata, storageInfo.objectName);
-          if (!metadataOk) {
-            log.error(`Metadata update returned false for ${image.filename}`);
-          } else {
-            log.info(`Metadata persisted for ${image.filename}`, {
-              objectName: storageInfo.objectName,
-            });
-          }
-        } catch (metadataErr) {
-          log.error(`Metadata update crashed for ${image.filename}`, { error: String(metadataErr) });
-        }
-        
+  log.info(`Starting batch ${batchId} with ${images.length} images, album: ${albumName}`);
+
+  const imageResults = await Promise.all(
+    images.map(async (image: ImageFile) => {
+      const objectName = predictObjectName(albumName, image.filename);
+
+      log.info(`Processing ${image.filename} -> ${objectName}`);
+
+      // Run conversion and metadata extraction in parallel
+      const [conversionResult, metadataResult] = await Promise.allSettled([
+        convertImage(image, objectName),
+        extractAndPersistMetadata(image.path, image.filename, objectName),
+      ]);
+
+      const conversionFailed = conversionResult.status === 'rejected';
+      const metadataFailed   = metadataResult.status   === 'rejected';
+
+      if (conversionFailed || metadataFailed) {
+        const errors: string[] = [];
+        if (conversionFailed) errors.push(`Conversion: ${conversionResult.reason}`);
+        if (metadataFailed)   errors.push(`Metadata: ${metadataResult.reason}`);
+
+        log.error(`✗ ${image.filename} failed: ${errors.join(' | ')}`);
+
         return {
-          ...result,
-          minioPath: storageInfo.minioPath,
-          metadataPersisted: true,
-          avifPath: undefined 
+          filename: image.filename,
+          success: false as const,
+          error: errors.join(' | '),
         };
       }
-      return result;
-    } catch (error) {
-      log.error(`✗ ${image.filename} crashed:`, { error: String(error) });
+
+      log.info(`✓ ${image.filename} fully processed`);
+
       return {
         filename: image.filename,
-        success: false as const,
-        error: String(error),
+        success: true as const,
+        objectName,
+        conversionMetrics: conversionResult.value.metrics,
       };
-    }
-  });
+    })
+  );
 
-  const results = await Promise.all(conversionPromises);
-  
-  // 4. Explicitly Typed Filters (Fixes 'r' implicitly has 'any' type)
-  const successful = results.filter((r: any) => r?.success && 'minioPath' in r).length;
-  const failed = results.filter((r: any) => !r?.success).length;
-  const metadataPersisted = results.filter((r: any) => r?.metadataPersisted === true).length;
-  const processingTimeMs = Date.now() - startTime;
+  const successful = imageResults.filter((r) => r.success).length;
+  const failed     = imageResults.filter((r) => !r.success).length;
 
-  log.info(`Batch ${batchId} SUMMARY: ${successful} fully processed, ${failed} failed, ${metadataPersisted} metadata persisted`);
+  log.info(`Batch ${batchId} complete: ${successful} succeeded, ${failed} failed`);
 
-  // 5. Cleanup only after all persistence is done
+  // Cleanup NFS scratch directory regardless of individual failures
   try {
     await cleanupBatch(batchDir);
-    log.info(`✓ Successfully cleaned up NFS directory: ${batchDir}`);
+    log.info(`✓ Cleaned up NFS directory: ${batchDir}`);
   } catch (err) {
-    log.error(`File cleanup failed: ${String(err)}`);
+    log.error(`NFS cleanup failed: ${String(err)}`);
   }
 
   return {
     totalImages: images.length,
     successful,
     failed,
-    metadataPersisted,
-    results,
-    processingTimeMs
+    results: imageResults,
+    processingTimeMs: Date.now() - startTime,
   };
 }

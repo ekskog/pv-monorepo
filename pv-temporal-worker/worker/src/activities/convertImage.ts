@@ -10,11 +10,10 @@ export interface ImageFile {
 export interface ConversionResult {
   filename: string;
   success: true;
+  objectName: string;
   metrics: {
     conversionTimeSec: number;
   };
-  avifSizeBytes: number;
-  avifPath: string;   // <--- Changed from avifData: string to avifPath
 }
 
 export interface ConversionFailure {
@@ -27,59 +26,51 @@ export type ProcessResult = ConversionResult | ConversionFailure;
 
 interface ConverterResponse {
   success: boolean;
+  object_name: string;
   metrics: {
     memoryBeforeMB: any;
     memoryAfterMB: any;
     peakMemoryMB: number;
     conversionTimeSec: number;
   };
-  data: {
-    filename: string;
-    content: string;
-    size: number;
-    mimetype: string;
-  };
 }
 
 const AVIF_CONVERTER_URL = process.env.AVIF_CONVERTER_URL ||
   'http://pv-avif-converter-service.pv.svc.cluster.local:3000';
+const MINIO_BUCKET = process.env.MINIO_BUCKET_NAME || 'photovault';
 
-export async function convertImage(image: ImageFile): Promise<ConversionResult> {
-  console.log(`[Activity] ===== Starting conversion =====`);
-  
-  try {
-    const imageBuffer = await fs.readFile(image.path);
-    const formData = new FormData();
-    const blob = new Blob([imageBuffer], { type: image.contentType });
-    formData.set('image', blob, image.filename);
+export async function convertImage(image: ImageFile, objectName: string): Promise<ConversionResult> {
+  console.log(`[convertImage] Starting conversion for ${image.filename} -> ${objectName}`);
 
-    const response = await fetch(`${AVIF_CONVERTER_URL}/convert`, {
-      method: 'POST',
-      body: formData,
-    });
+  const imageBuffer = await fs.readFile(image.path);
+  const formData = new FormData();
+  const blob = new Blob([imageBuffer], { type: image.contentType });
+  formData.set('image', blob, image.filename);
+  formData.set('object_name', objectName);
+  formData.set('bucket', MINIO_BUCKET);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Converter returned ${response.status}: ${errorText}`);
-    }
+  const response = await fetch(`${AVIF_CONVERTER_URL}/convert`, {
+    method: 'POST',
+    body: formData,
+  });
 
-    const result = await response.json() as ConverterResponse;
-
-    // Write the AVIF to NFS so we don't pass the base64 string through Temporal
-    const avifPath = `${image.path}.avif`;
-    await fs.writeFile(avifPath, Buffer.from(result.data.content, 'base64'));
-
-    console.log(`[Activity] ✓ Converted and saved to NFS: ${avifPath}`);
-
-    return {
-      filename: image.filename,
-      success: true,
-      metrics: result.metrics,
-      avifSizeBytes: result.data.size,
-      avifPath: avifPath // Returning the path string
-    };
-  } catch (error) {
-    console.error(`[Activity] ✗ Failed ${image.filename}:`, error);
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Converter returned ${response.status}: ${errorText}`);
   }
+
+  const result = await response.json() as ConverterResponse;
+
+  if (!result.success) {
+    throw new Error(`Converter reported failure for ${image.filename}`);
+  }
+
+  console.log(`[convertImage] ✓ Converted and written to MinIO: ${objectName}`);
+
+  return {
+    filename: image.filename,
+    success: true,
+    objectName: result.object_name,
+    metrics: result.metrics,
+  };
 }

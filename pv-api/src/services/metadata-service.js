@@ -1,3 +1,4 @@
+// Force rebuild: 23/03 09:26
 const exifr = require("exifr");
 const { exiftool } = require("exiftool-vendored");
 const os = require("os");

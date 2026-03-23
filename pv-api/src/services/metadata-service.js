@@ -35,6 +35,38 @@ class MetadataService {
   }
 
   /**
+   * Fire-and-forget call to the Python metadata microservice.
+   * Results are logged only — does not affect the existing extraction flow.
+   */
+  async callPythonService(buffer, filename) {
+    const url = `http://pv-metadata-service/extract`;
+    try {
+      debugMetadata(`[python] Calling Python metadata service for ${filename}`);
+
+      const FormData = require("form-data");
+      const form = new FormData();
+      form.append("file", buffer, { filename, contentType: "application/octet-stream" });
+
+      const response = await fetch(url, {
+        method: "POST",
+        body: form,
+        headers: form.getHeaders(),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        debugMetadata(`[python] Service returned ${response.status} for ${filename}`);
+        return;
+      }
+
+      const result = await response.json();
+      debugMetadata(`[python] Result for ${filename}: ${JSON.stringify(result, null, 2)}`);
+    } catch (err) {
+      debugMetadata(`[python] Call failed for ${filename}: ${err.message}`);
+    }
+  }
+
+  /**
    * Extract metadata from a HEIC file using exiftool-vendored.
    * Writes buffer to a temp file, reads tags, cleans up.
    */
@@ -56,6 +88,9 @@ class MetadataService {
 
     try {
       debugMetadata(`Extracting metadata from: ${filename}`);
+
+      // Fire Python service in parallel — logs only, does not affect this flow
+      this.callPythonService(buffer, filename).catch(() => {});
 
       let raw;
 

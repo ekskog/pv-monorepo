@@ -257,7 +257,36 @@ async request(endpoint, options = {}) {
 
   // Temporal workflow status lookup
   async getBulkWorkflowStatus(workflowId) {
-    return this.request(`/bulk/status/${encodeURIComponent(workflowId)}`);
+    if (!workflowId) throw new Error('workflowId is required');
+
+    const API_BASE_URL = this.getApiBaseUrl();
+    const url = `${API_BASE_URL}/bulk/status/${encodeURIComponent(workflowId)}`;
+
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    const token = this.getAuthToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    try {
+      const resp = await fetch(url, { headers });
+
+      // Temporal status can lag right after upload acceptance.
+      // Treat initial 404 as "not ready yet" instead of a hard error.
+      if (resp.status === 404) {
+        return null;
+      }
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => null);
+        throw new Error(err?.message || `HTTP error! status: ${resp.status}`);
+      }
+
+      return await resp.json();
+    } catch (err) {
+      console.debug('getBulkWorkflowStatus error:', err?.message || err);
+      return null;
+    }
   }
 
   // List temporal bulk jobs in a date range

@@ -57,7 +57,7 @@ const getAlbums = (minioClient) => async (req, res) => {
       albums: albumMetadata,
     });
   } catch (error) {
-    console.error("[album.js line 35] Error:", error.message);
+    debugAlbum("Error:", error.message);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -217,7 +217,7 @@ const getPhotos = (minioClient) => async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("[(206) albums.js] Error:", error.message);
+    debugAlbum("Error:", error.message);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -282,7 +282,7 @@ const uploadFiles = (pendingJobs) => async (req, res) => {
     }
 
     const jobId = uuidv4(); // Generate unique job ID for this upload
-    debugUpload(`[albums.js (273)] Upload request received for ${files.length} files to folder: ${folderPath} with jobId: ${jobId}`);
+    debugUpload(`Upload request received for ${files.length} files to folder: ${folderPath} with jobId: ${jobId}`);
 
     // Store job for when SSE connection is established
     const jobData = {
@@ -293,7 +293,7 @@ const uploadFiles = (pendingJobs) => async (req, res) => {
     };
 
     pendingJobs.set(jobId, jobData);
-    debugUpload(`[albums.js (288)] Stored pending job ${jobId} with ${files.length} files`);
+    debugUpload(`Stored pending job ${jobId} with ${files.length} files`);
 
     const response = {
       success: true,
@@ -313,7 +313,7 @@ const uploadFiles = (pendingJobs) => async (req, res) => {
     // Set timeout to clean up if client never connects
     setTimeout(() => {
       if (pendingJobs.has(jobId)) {
-        debugUpload(`[albums.js (304)] Cleaning up expired pending job ${jobId}`);
+        debugUpload(`Cleaning up expired pending job ${jobId}`);
         pendingJobs.delete(jobId);
       }
     }, 60000); // 60 seconds timeout
@@ -403,10 +403,7 @@ const deleteObjects = (minioClient) => async (req, res) => {
 
 // PUT /buckets/:bucketName/objects - Update photo metadata in the album JSON file
 const updatePhotoMetadata = (minioClient) => async (req, res) => {
-  debugAlbum(
-    `[albums.js] Update photo metadata request received: ${JSON.stringify(
-      req.params
-    )} with body: ${JSON.stringify(req.body)}`
+  debugAlbum(`Update photo metadata request received: ${JSON.stringify(req.params)} with body: ${JSON.stringify(req.body)}`
   );
   try {
     const { folderPath, objectName } = req.params;
@@ -422,7 +419,7 @@ const updatePhotoMetadata = (minioClient) => async (req, res) => {
     const metadataService = new MetadataService(minioClient);
 
     debugAlbum(
-      `[albums.js] Updating metadata for ${folderPath}/${objectName} with data: ${JSON.stringify(
+      `Updating metadata for ${folderPath}/${objectName} with data: ${JSON.stringify(
         metadata
       )}`
     );
@@ -436,7 +433,7 @@ const updatePhotoMetadata = (minioClient) => async (req, res) => {
           debugAlbum(`[albums.js (379)] METADATA ${JSON.stringify(metadata)}`);
         })
         .catch((err) => {
-          console.error(`Error finding address: ${err}`);
+          debugAlbum(`Error finding address: ${err}`);
         });
     }
 
@@ -508,7 +505,7 @@ const updatePhotoMetadata = (minioClient) => async (req, res) => {
         },
       });
     } catch (metadataError) {
-      console.error(`[albums.js] Error updating metadata:`, metadataError);
+      debugAlbum(`Error updating metadata: ${metadataError.message}`);
       return res.status(500).json({
         success: false,
         message: "Failed to update metadata file.",
@@ -516,7 +513,7 @@ const updatePhotoMetadata = (minioClient) => async (req, res) => {
       });
     }
   } catch (error) {
-    console.error(`[albums.js] Update metadata error:`, error);
+    debugAlbum(`Update metadata error: ${error.message}`);
     res.status(500).json({
       success: false,
       error: "Failed to update photo metadata. " + error.message,
@@ -676,9 +673,9 @@ const renameAlbum = (minioClient) => async (req, res) => {
         },
       });
     } catch (minioError) {
-      console.error(
-        "[albums.js] MinIO operation failed during rename:",
-        minioError
+      debugAlbum(
+        "MinIO operation failed during rename:",
+        minioError.message
       );
       // Note: In a production system, you might want to implement rollback logic here
       // For now, we'll return the error and let the admin handle cleanup if needed
@@ -688,7 +685,7 @@ const renameAlbum = (minioClient) => async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("[albums.js] Rename album error:", error);
+    debugAlbum("Rename album error:", error.message);
     res.status(500).json({
       success: false,
       error: error.message,

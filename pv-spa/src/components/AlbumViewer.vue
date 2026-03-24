@@ -67,21 +67,6 @@
       </button>
     </div>
 
-    <!-- Processing Status -->
-    <div v-if="processingNotifications" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-      <div class="flex items-center gap-3">
-        <div class="flex-shrink-0">
-          <i class="fas fa-cog fa-spin text-blue-600"></i>
-        </div>
-        <div class="flex-grow">
-          <p class="text-sm font-medium text-blue-800">{{ processingStatus }}</p>
-          <div v-if="processingJobId" class="text-xs text-blue-600 mt-1">
-            Job ID: {{ processingJobId }}
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Empty State -->
     <PhotoGridEmpty v-if="!loading && !error && mediaType === 'images' && visiblePhotos.length === 0" />
     <div v-if="!loading && !error && mediaType === 'videos' && visibleVideos.length === 0" class="text-center py-12">
@@ -122,7 +107,6 @@
     <MediaUpload
       :showUploadDialog="showUploadDialog"
       :album-name="albumName"
-      :currentJobId="processingJobId"
       @close="handleUploadDialogClose"
       @jobReady="handleJobReady"
     />
@@ -189,10 +173,8 @@
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import apiService from "../services/api.js";
 import authService from "../services/auth.js";
-import SSEService from "../services/sseService.js";
-import WorkflowStatusService from "../services/workflowStatusService.js";
-import { useUserSettings } from "../composables/useUserSettings";
 import { useToast } from "../composables/useToast";
+import { useUploadMonitor, isTerminalUploadStatus } from "../services/uploadMonitor.js";
 
 import AlbumHeader from "./AlbumHeader.vue";
 import MediaUpload from "./MediaUpload.vue";
@@ -232,20 +214,10 @@ const preloadStats = ref({
   readyImages: [],
 });
 const progressTracker = ref(null);
-
-const processingNotifications = ref(false);
-const processingStatus = ref("");
-const processingJobId = ref(null);
-const pendingJobId = ref(null);
-const processingMode = ref(null);
-let sseService = null;
-let workflowStatusService = null;
-let _userSettingsUnsub = null;
-
-// Readable user settings (reactive)
-const { settings } = useUserSettings();
 // Toasts
 const { toasts, showToast } = useToast();
+const { jobs: trackedUploads, registerLegacyUpload, registerBulkUpload } = useUploadMonitor();
+const handledAlbumCompletions = new Set();
 
 // NEW: Sort order state
 const sortOrder = ref('chronological'); // 'chronological' or 'reverse'
@@ -319,17 +291,19 @@ const sortedLightboxVideos = computed(() => sortedVideos.value);
 
 const handleJobReady = (payload) => {
   if (payload?.workflowId) {
-    processingMode.value = 'temporal-bulk';
-    pendingJobId.value = payload.workflowId;
-    startWorkflowStatusListener(payload.workflowId);
+    registerBulkUpload({
+      workflowId: payload.workflowId,
+      batchId: payload.batchId,
+      albumName: props.albumName,
+    });
     return;
   }
 
   if (payload?.jobId) {
-    processingMode.value = 'legacy-sse';
-    pendingJobId.value = payload.jobId;
-    processingJobId.value = payload.jobId;
-    startSseProcessingListener(payload.jobId);
+    registerLegacyUpload({
+      jobId: payload.jobId,
+      albumName: props.albumName,
+    });
   }
 };
 
@@ -337,19 +311,9 @@ const handleUploadDialogClose = (payload) => {
   showUploadDialog.value = false;
   if (payload?.filesCount) {
     if (payload.mode === 'temporal-bulk') {
-      // Bulk upload: inform user they can monitor bulk jobs
       showBulkUploadNotification(payload.jobId || payload.workflowId || payload.batchId);
     } else {
-      const monitor = settings.monitorNonBulkUploads;
-      if (monitor) {
-        processingNotifications.value = true;
-        processingStatus.value = `Waiting for job ID...`;
-      } else {
-        processingNotifications.value = false;
-        processingStatus.value = '';
-        // Inform the user via an in-app toast that processing continues in background
-        showBackgroundProcessingNotification();
-      }
+      showNonBulkUploadNotification(payload.jobId);
     }
   }
 };
@@ -683,239 +647,6 @@ const preloadVisibleImages = () => {
   imageElements.forEach((img) => observer.observe(img));
 };
 
-// Legacy SSE integration
-const startSseProcessingListener = (jobId) => {
-  // Respect user preference: do not monitor legacy (non-bulk) uploads if disabled
-  const monitor = settings.monitorNonBulkUploads;
-  if (!monitor) {
-    console.log('[ALBUM VIEWER DEBUG] SSE monitoring disabled by user preference, skipping SSE for job:', jobId);
-    // still set job id so other logic can reference it, but do not open SSE or show notifications
-    processingJobId.value = jobId;
-    pendingJobId.value = jobId;
-    processingNotifications.value = false;
-    processingStatus.value = '';
-    return;
-  }
-  // Prevent multiple SSE connections to the same job
-  if (processingJobId.value === jobId && sseService) {
-    console.log('[ALBUM VIEWER DEBUG] Already connected to job:', jobId);
-    return;
-  }
-
-  processingJobId.value = jobId;
-  processingNotifications.value = true;
-  processingStatus.value = "Starting photo processing...";
-
-  sseService = new SSEService(
-    apiService,
-    jobId,
-    handleProcessingUpdate,
-    () => {}
-  );
-  sseService.start();
-  console.log('[ALBUM VIEWER DEBUG] Started processing listener for job:', jobId);
-};
-
-// Temporal workflow polling integration
-const startWorkflowStatusListener = (workflowId) => {
-  if (processingJobId.value === workflowId && workflowStatusService) {
-    console.log('[ALBUM VIEWER DEBUG] Already polling workflow:', workflowId);
-    return;
-  }
-  // Respect user preference for bulk (temporal) workflow monitoring
-  const monitorBulk = settings.monitorBulkUploads;
-  processingJobId.value = workflowId;
-  processingProgress.value = 0;
-
-  if (!monitorBulk) {
-    console.log('[ALBUM VIEWER DEBUG] Bulk monitoring disabled by user preference, skipping polling for workflow:', workflowId);
-    // keep job id for reference but do not start polling; inform user processing continues in background
-    pendingJobId.value = workflowId;
-    processingNotifications.value = false;
-    processingStatus.value = '';
-    showBackgroundProcessingNotification();
-    return;
-  }
-
-  // If monitoring enabled, show a brief processing UI and start polling
-  processingNotifications.value = true;
-  processingStatus.value = 'Starting bulk processing...';
-
-  workflowStatusService?.stop();
-  workflowStatusService = new WorkflowStatusService(
-    apiService,
-    workflowId,
-    handleWorkflowStatusUpdate,
-    handleWorkflowStatusError
-  );
-  workflowStatusService.start();
-  console.log('[ALBUM VIEWER DEBUG] Started workflow polling for:', workflowId);
-};
-
-const stopProcessingListener = () => {
-  sseService?.stop();
-  workflowStatusService?.stop();
-  sseService = null;
-  workflowStatusService = null;
-  processingMode.value = null;
-  processingNotifications.value = false;
-  processingStatus.value = "";
-  processingJobId.value = null;
-  console.log('[ALBUM VIEWER DEBUG] Stopped processing listener');
-};
-
-const processingProgress = ref(0);
-
-const handleProcessingUpdate = (data) => {
-  console.log('[ALBUM VIEWER DEBUG] Processing update:', data.type, data);
-
-  switch (data.type) {
-    case "connected":
-      processingStatus.value = "Connected to photo processing service...";
-      processingProgress.value = 0;
-      break;
-
-    case "started":
-      processingStatus.value = data.message || `Processing started for ${data.progress?.total || 0} files...`;
-      processingProgress.value = 0;
-      break;
-
-    case "progress":
-      if (data.progress) {
-        const { current, total, percentage, uploaded, failed, lastUploaded, lastFailed } = data.progress;
-
-        // Show detailed progress status
-        let statusText = `Processing: ${percentage}% complete`;
-        statusText += ` (${current}/${total} files)`;
-
-        if (uploaded > 0 || failed > 0) {
-          const parts = [];
-          if (uploaded > 0) parts.push(`${uploaded} successful`);
-          if (failed > 0) parts.push(`${failed} failed`);
-          statusText += ` - ${parts.join(', ')}`;
-        }
-
-        processingStatus.value = statusText;
-        processingProgress.value = percentage;
-
-        console.log(`[ALBUM VIEWER DEBUG] Progress: ${uploaded} uploaded, ${failed} failed`);
-
-        if (lastUploaded) {
-          console.log(`[ALBUM VIEWER DEBUG] ✓ Processed: ${lastUploaded}`);
-        }
-        if (lastFailed) {
-          console.log(`[ALBUM VIEWER DEBUG] ✗ Failed: ${lastFailed}`);
-        }
-      } else {
-        processingStatus.value = data.message || "Processing photos...";
-      }
-      break;
-    case "complete":
-      if (data.results) {
-        const { uploaded, failed } = data.results;
-        let completeMessage = `Photo processing complete! 🎉`;
-
-        if (failed > 0) {
-          completeMessage += ` (${uploaded} uploaded, ${failed} failed)`;
-        } else {
-          completeMessage += ` All ${uploaded} photos processed successfully!`;
-        }
-
-        processingStatus.value = completeMessage;
-      } else {
-        processingStatus.value = "Photo processing complete! 🎉";
-      }
-
-      // Reset upload state
-      if (pendingJobId.value) {
-        emit('uploadComplete', pendingJobId.value);
-      }
-
-      showProcessingCompleteNotification();
-      setTimeout(async () => {
-        await refreshAlbum();
-        stopProcessingListener();
-      }, 2000);
-      break;
-    case "failed":
-      if (data.error) {
-        processingStatus.value = `Photo processing failed: ${data.error}`;
-      } else {
-        processingStatus.value = "Photo processing failed. Please try again.";
-      }
-      setTimeout(() => stopProcessingListener(), 5000);
-      break;
-    default:
-      processingStatus.value = data.message || "Processing photos...";
-  }
-};
-
-const handleWorkflowStatusUpdate = (payload) => {
-  const status = payload?.status;
-  console.log('[ALBUM VIEWER DEBUG] Workflow status update:', status, payload);
-
-  switch (status) {
-    case 'RUNNING':
-      // Keep silent for temporal bulk mode.
-      break;
-
-    case 'COMPLETED': {
-      const result = payload?.result || {};
-      const successful = result.successful ?? 0;
-      const failed = result.failed ?? 0;
-      const total = result.totalImages ?? successful + failed;
-
-      let message = `Bulk processing complete: ${successful}/${total} successful`;
-      if (failed > 0) {
-        message += `, ${failed} failed`;
-      }
-      // Silent mode: keep details in logs for now.
-      console.log('[ALBUM VIEWER DEBUG]', message);
-      processingProgress.value = 100;
-
-      if (pendingJobId.value) {
-        emit('uploadComplete', pendingJobId.value);
-      }
-
-      // Silent mode: no browser notification for temporal bulk.
-      setTimeout(async () => {
-        await refreshAlbum();
-        stopProcessingListener();
-      }, 2000);
-      break;
-    }
-
-    case 'FAILED':
-    case 'TIMED_OUT':
-    case 'TERMINATED':
-    case 'CANCELED':
-    case 'CANCELLED': {
-      const errorMessage = payload?.error?.message || 'Background processing failed.';
-      console.warn(`[ALBUM VIEWER DEBUG] Bulk processing failed (${status}): ${errorMessage}`);
-      setTimeout(() => stopProcessingListener(), 5000);
-      break;
-    }
-
-    default:
-      // Keep silent for non-terminal status updates.
-      console.log(`[ALBUM VIEWER DEBUG] Processing status: ${status || 'UNKNOWN'}`);
-  }
-};
-
-const handleWorkflowStatusError = (error) => {
-  console.warn('[ALBUM VIEWER DEBUG] Workflow polling error:', error?.message || error);
-};
-
-const showProcessingCompleteNotification = () => {
-  if ("Notification" in window && Notification.permission === "granted") {
-    new Notification("Photo Processing Complete!", {
-      body: "Your photos are now ready to view in the album.",
-      icon: "/favicon.ico",
-    });
-  }
-};
-
-// Inform user that uploads will be processed in background when monitoring is disabled
 const showBackgroundProcessingNotification = () => {
   const title = "Photos processing in background";
   const body = "Your upload is being processed in the background and will appear in the album when ready.";
@@ -934,10 +665,9 @@ const showBackgroundProcessingNotification = () => {
   }
 };
 
-// Notify user for bulk uploads and suggest Monitor page
 const showBulkUploadNotification = (workflowId) => {
   const title = "Bulk upload accepted";
-  const body = "Your bulk upload has been accepted. You can monitor progress on the Monitor page (header -> Monitor).";
+  const body = "Your bulk upload has been accepted. You can monitor progress on the Monitor page.";
   const message = workflowId ? `${title}: ${body} (job: ${workflowId})` : `${title}: ${body}`;
 
   if ("Notification" in window && Notification.permission === "granted") {
@@ -955,35 +685,51 @@ const showBulkUploadNotification = (workflowId) => {
   }
 };
 
+const showNonBulkUploadNotification = (jobId) => {
+  const title = 'Upload accepted';
+  const body = 'Your upload is processing in the background. You can monitor progress on the Monitor page.';
+  const message = jobId ? `${title}: ${body} (job: ${jobId})` : `${title}: ${body}`;
+
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body, icon: "/favicon.ico" });
+  } else {
+    try {
+      showToast(message);
+    } catch (e) {
+      showBackgroundProcessingNotification();
+    }
+  }
+};
+
+watch(
+  () => Object.values(trackedUploads).map((job) => `${job.id}:${job.status}:${job.completedAt || ''}`),
+  async () => {
+    const matchingJobs = Object.values(trackedUploads).filter(
+      (job) => job.albumName === props.albumName && job.completedAt && !handledAlbumCompletions.has(`${job.id}:${job.completedAt}`)
+    );
+
+    if (matchingJobs.length === 0) {
+      return;
+    }
+
+    matchingJobs.forEach((job) => {
+      handledAlbumCompletions.add(`${job.id}:${job.completedAt}`);
+    });
+
+    const successfulJobs = matchingJobs.filter((job) => job.status === 'COMPLETED');
+    if (successfulJobs.length > 0) {
+      await refreshAlbum();
+      successfulJobs.forEach((job) => {
+        emit('uploadComplete', job.workflowId || job.jobId || job.id);
+      });
+    }
+  },
+  { deep: true }
+);
+
 onMounted(async () => {
   console.log("[AlbumViewer] Mounted with album:", props.albumName);
   await loadPhotos();
-  // Watch user settings so we can stop SSE or workflow polling if user disables monitoring
-  const stop1 = watch(
-    () => settings.monitorNonBulkUploads,
-    (newVal) => {
-      if (!newVal && processingMode.value === 'legacy-sse') {
-        console.log('[ALBUM VIEWER DEBUG] User disabled SSE monitoring; stopping SSE listener.');
-        stopProcessingListener();
-      }
-    }
-  );
-
-  const stop2 = watch(
-    () => settings.monitorBulkUploads,
-    (newVal) => {
-      if (!newVal && processingMode.value === 'temporal-bulk') {
-        console.log('[ALBUM VIEWER DEBUG] User disabled bulk monitoring; stopping workflow polling.');
-        stopProcessingListener();
-      }
-      if (newVal && processingMode.value === 'temporal-bulk' && pendingJobId.value) {
-        console.log('[ALBUM VIEWER DEBUG] User enabled bulk monitoring; starting workflow polling for pending job.');
-        startWorkflowStatusListener(pendingJobId.value);
-      }
-    }
-  );
-
-  _userSettingsUnsub = () => { try { stop1(); stop2(); } catch(e){} };
   setTimeout(() => {
     startAggressivePreloading();
     preloadVisibleImages();
@@ -999,10 +745,9 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  stopProcessingListener();
-  if (typeof _userSettingsUnsub === 'function') {
-    try { _userSettingsUnsub(); } catch (e) {}
-    _userSettingsUnsub = null;
+  if (progressTracker.value) {
+    clearInterval(progressTracker.value);
+    progressTracker.value = null;
   }
 });
 </script>

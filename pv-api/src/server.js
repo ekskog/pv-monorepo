@@ -140,7 +140,7 @@ const persistProgress = (jobId, data = {}) => {
     try {
       progressStore.set(jobId, data.progress);
     } catch (e) {
-      console.warn(`[server] Failed to persist progress for ${jobId}:`, e.message);
+      debugServer(`Failed to persist progress for ${jobId}: ${e.message}`);
     }
   }
 };
@@ -175,7 +175,7 @@ async function processFilesInBackground(
 
     for (let i = 0; i < totalFiles; i++) {
       const file = files[i];
-      console.log(`[SERVER] Processing file ${i + 1}/${totalFiles}: ${file.originalname}`);
+      debugServer(`Processing file ${i + 1}/${totalFiles}: ${file.originalname}`);
       try {
         // Process the individual file
         const result = await uploadService.processAndUploadFile(
@@ -185,7 +185,7 @@ async function processFilesInBackground(
           file.originalname
         );
         uploadResults.push(result);
-        console.log(`[SERVER] Successfully processed: ${file.originalname}`);
+        debugServer(`Successfully processed: ${file.originalname}`);
 
         // Send progress update after each successful file upload
         const progressPercent = Math.round(((i + 1) / totalFiles) * 100);

@@ -141,7 +141,7 @@
         <div class="flex items-center justify-between">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Monitor non-bulk uploads</div>
-            <div class="text-xs text-gray-500">When enabled, the album UI will show real-time processing notifications for legacy (non-bulk) uploads via SSE.</div>
+            <div class="text-xs text-gray-500">When enabled, the Monitor page will show real-time processing updates for legacy (non-bulk) uploads via SSE.</div>
           </div>
           <div>
             <label class="inline-flex items-center">
@@ -153,7 +153,7 @@
         <div class="flex items-center justify-between mt-6">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Monitor bulk uploads</div>
-            <div class="text-xs text-gray-500">When enabled, the app will poll for temporal bulk upload progress and show status in the album UI (Monitor page).</div>
+            <div class="text-xs text-gray-500">When enabled, the Monitor page will poll Temporal bulk uploads and show live progress there.</div>
           </div>
           <div>
             <label class="inline-flex items-center">

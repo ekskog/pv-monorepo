@@ -101,6 +101,8 @@ const onTurnstileError = () => {
 const renderTurnstile = () => {
   if (!TURNSTILE_SITE_KEY) {
     console.error('Turnstile site key is missing!')
+    turnstileError.value = 'Security widget key is missing. Reload after updating your environment configuration.'
+    return
   }
 
   if (!window.turnstile || !turnstileRef.value || widgetId.value) return

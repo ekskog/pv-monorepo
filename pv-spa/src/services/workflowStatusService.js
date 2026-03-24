@@ -73,6 +73,13 @@ export default class WorkflowStatusService {
     try {
       const payload = await this.apiService.getBulkWorkflowStatus(this.workflowId);
       this.consecutiveErrors = 0;
+
+      // Endpoint may briefly return null when workflow metadata has not propagated yet.
+      if (!payload) {
+        this.scheduleNextPoll();
+        return;
+      }
+
       this.onUpdate?.(payload);
 
       if (WorkflowStatusService.isTerminalStatus(payload?.status)) {

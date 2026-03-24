@@ -16,7 +16,7 @@ class ConfigService {
       }
     })();
 
-    this.config = {
+    const baseConfig = {
       apiUrl: env.API_URL || import.meta.env.VITE_API_URL || 'https://vault-api.ekskog.net',
       appTitle: env.APP_TITLE || import.meta.env.VITE_APP_TITLE || 'EKSKOG PHOTOS',
       appDescription: env.APP_DESCRIPTION || import.meta.env.VITE_APP_DESCRIPTION || 'Secure Photo Gallery',
@@ -31,8 +31,20 @@ class ConfigService {
       turnstileSiteKey: env.TURNSTILE_SITE_KEY || import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
     }
 
-    // Apply persisted overrides
-    Object.assign(this.config, persisted || {});
+    // Only allow persisted keys that are intentionally user-overridable in the UI.
+    // This prevents stale localStorage values from clobbering env-managed values
+    // such as VITE_TURNSTILE_SITE_KEY.
+    const persistedOverrides = {};
+    if (persisted && typeof persisted === 'object') {
+      if (typeof persisted.apiUrl === 'string' && persisted.apiUrl.trim()) {
+        persistedOverrides.apiUrl = persisted.apiUrl;
+      }
+    }
+
+    this.config = {
+      ...baseConfig,
+      ...persistedOverrides,
+    };
 
     console.log('🔧 Config: Loaded from runtime configuration:', this.config)
   }
@@ -56,7 +68,10 @@ class ConfigService {
   saveConfig(changes = {}) {
     try {
       this.config = { ...this.config, ...changes };
-      localStorage.setItem('pv_config', JSON.stringify(this.config));
+      const persisted = {
+        apiUrl: this.config.apiUrl,
+      };
+      localStorage.setItem('pv_config', JSON.stringify(persisted));
       return true;
     } catch (e) {
       console.warn('Failed to persist config:', e.message);

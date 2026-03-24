@@ -13,6 +13,7 @@
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { formatMetadataTimestamp } from '../utils/timestamp.js'
 
 const props = defineProps({
   photo: { type: Object, required: true },
@@ -57,16 +58,7 @@ const formattedTimestamp = computed(() => {
     return "No date";
   }
 
-  try {
-    const date = new Date(metadata.timestamp);
-    return (
-      date.toLocaleDateString("en-GB") +
-      " " +
-      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    );
-  } catch {
-    return "Invalid date";
-  }
+  return formatMetadataTimestamp(metadata.timestamp);
 })
 
 const formattedGPS = computed(() => {

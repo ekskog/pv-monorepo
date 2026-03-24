@@ -82,6 +82,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import apiService from '../services/api.js'
+import { formatMetadataTimestamp } from '../utils/timestamp.js'
 
 const props = defineProps({
   videos: { type: Array, required: true },
@@ -158,13 +159,7 @@ const hasVideoTimestamp = (video) => {
     return false;
   }
 
-  try {
-    const date = new Date(metadata.timestamp);
-    // Check if date is valid
-    return !isNaN(date.getTime());
-  } catch {
-    return false;
-  }
+  return formatMetadataTimestamp(metadata.timestamp) !== "Invalid date";
 }
 
 const formatVideoTimestamp = (video) => {
@@ -179,16 +174,8 @@ const formatVideoTimestamp = (video) => {
     return "";
   }
 
-  try {
-    const date = new Date(metadata.timestamp);
-    return (
-      date.toLocaleDateString("en-GB") +
-      " " +
-      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    );
-  } catch {
-    return "";
-  }
+  const formatted = formatMetadataTimestamp(metadata.timestamp);
+  return formatted === "Invalid date" ? "" : formatted;
 }
 
 const handleVideoLoaded = (event) => {

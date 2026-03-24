@@ -123,6 +123,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import apiService from '../services/api.js'
 import authService from '../services/auth.js'
+import { formatMetadataTimestamp } from '../utils/timestamp.js'
 
 // Props
 const props = defineProps({
@@ -272,12 +273,7 @@ const downloadVideo = (video) => {
 
 const formatTimestamp = (timestamp) => {
   if (!timestamp) return 'Unknown'
-  try {
-    const date = new Date(timestamp)
-    return date.toLocaleDateString("en-GB") + " " + date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  } catch {
-    return 'Invalid date'
-  }
+  return formatMetadataTimestamp(timestamp)
 }
 
 const formatFileSize = (bytes) => {

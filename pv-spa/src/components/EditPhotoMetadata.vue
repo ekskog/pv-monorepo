@@ -97,8 +97,12 @@ export default {
 </script>
 
 <script setup>
-import { reactive, toRefs, ref, watch } from 'vue';
+import { reactive, ref, watch } from 'vue';
 import apiService from '../services/api.js';
+import {
+  toDatetimeLocalPreservingOffset,
+  fromDatetimeLocalPreservingOffset
+} from '../utils/timestamp.js';
 
 const props = defineProps({
   photo: { type: Object, required: true },
@@ -113,29 +117,17 @@ const expanded = reactive({});
 // Timestamp value for native datetime-local input (YYYY-MM-DDTHH:mm format)
 const timestampValue = ref('');
 
-// Initialize timestamp value with proper format and error handling
+// Initialize timestamp value without converting away original metadata timezone.
 if (editableMetadata.timestamp && editableMetadata.timestamp !== 'Invalid Date Invalid Date') {
-  try {
-    const date = new Date(editableMetadata.timestamp);
-    // Check if the date is valid
-    if (!isNaN(date.getTime())) {
-      // Convert to YYYY-MM-DDTHH:MM format (local timezone)
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      timestampValue.value = `${year}-${month}-${day}T${hours}:${minutes}`;
-    }
-  } catch (error) {
-    console.log('Invalid timestamp format:', editableMetadata.timestamp);
-    // Leave timestampValue as empty string for invalid dates
-  }
+  timestampValue.value = toDatetimeLocalPreservingOffset(editableMetadata.timestamp);
 }
 
 // Keep editableMetadata.timestamp in sync with picker
 watch(timestampValue, (newVal) => {
-  editableMetadata.timestamp = newVal ? new Date(newVal).toISOString() : '';
+  editableMetadata.timestamp = fromDatetimeLocalPreservingOffset(
+    newVal,
+    props.photoMetadataLookup[props.photo.name]?.timestamp
+  );
 });
 
 // Parse coordinates into separate lat/lng fields

@@ -1,7 +1,7 @@
 <template>
   <div class="max-w-6xl mx-auto p-4 md:p-8">
     <div class="mb-6">
-      <h2 class="text-2xl font-semibold text-gray-900">Bulk Upload Jobs</h2>
+      <h2 class="text-2xl font-semibold text-gray-900">Monitor</h2>
       <p class="text-sm text-gray-600 mt-1">
         View Temporal bulk upload workflows by start date range.
       </p>
@@ -83,7 +83,7 @@
       </div>
 
       <div v-if="filteredJobs.length === 0 && !loading" class="p-8 text-center text-gray-500 text-sm">
-        No bulk jobs found for the selected range.
+        No monitor entries found for the selected range.
       </div>
 
       <div v-else>

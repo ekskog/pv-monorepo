@@ -153,7 +153,7 @@
         <div class="flex items-center justify-between mt-6">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Monitor bulk uploads</div>
-            <div class="text-xs text-gray-500">When enabled, the app will poll for temporal bulk upload progress and show status in the album UI (Bulk Jobs page).</div>
+            <div class="text-xs text-gray-500">When enabled, the app will poll for temporal bulk upload progress and show status in the album UI (Monitor page).</div>
           </div>
           <div>
             <label class="inline-flex items-center">

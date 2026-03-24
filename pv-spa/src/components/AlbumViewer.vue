@@ -934,10 +934,10 @@ const showBackgroundProcessingNotification = () => {
   }
 };
 
-// Notify user for bulk uploads and suggest Bulk Jobs monitoring page
+// Notify user for bulk uploads and suggest Monitor page
 const showBulkUploadNotification = (workflowId) => {
   const title = "Bulk upload accepted";
-  const body = "Your bulk upload has been accepted. You can monitor bulk jobs on the Bulk Jobs page (header → Bulk Jobs).";
+  const body = "Your bulk upload has been accepted. You can monitor progress on the Monitor page (header -> Monitor).";
   const message = workflowId ? `${title}: ${body} (job: ${workflowId})` : `${title}: ${body}`;
 
   if ("Notification" in window && Notification.permission === "granted") {

@@ -78,7 +78,7 @@ const mobileSearchQuery = ref("");ible on md and below) -->
             }
           "
         >
-          Bulk Upload Jobs
+          Monitor
         </button>
 
         <button
@@ -178,6 +178,18 @@ const mobileSearchQuery = ref("");ible on md and below) -->
         v-if="isAdmin"
         class="text-sm px-4 py-2 border-b-2 transition-all"
         :class="
+          currentView === 'bulk-jobs'
+            ? 'text-blue-600 bg-blue-50 border-blue-600 font-semibold'
+            : 'text-gray-600 border-transparent hover:text-blue-500 hover:bg-blue-50'
+        "
+        @click="$emit('navigate', 'bulk-jobs')"
+      >
+        <i class="fas fa-list-check mr-2"></i> Monitor
+      </button>
+      <button
+        v-if="isAdmin"
+        class="text-sm px-4 py-2 border-b-2 transition-all"
+        :class="
           currentView === 'settings'
             ? 'text-blue-600 bg-blue-50 border-blue-600 font-semibold'
             : 'text-gray-600 border-transparent hover:text-blue-500 hover:bg-blue-50'
@@ -185,18 +197,6 @@ const mobileSearchQuery = ref("");ible on md and below) -->
         @click="$emit('navigate', 'settings')"
       >
         <i class="fas fa-cog mr-2"></i> Settings
-      </button>
-      <button
-        v-if="isAdmin"
-        class="text-sm px-4 py-2 border-b-2 transition-all"
-        :class="
-          currentView === 'bulk-jobs'
-            ? 'text-blue-600 bg-blue-50 border-blue-600 font-semibold'
-            : 'text-gray-600 border-transparent hover:text-blue-500 hover:bg-blue-50'
-        "
-        @click="$emit('navigate', 'bulk-jobs')"
-      >
-        <i class="fas fa-list-check mr-2"></i> Bulk Jobs
       </button>
     </div>
 

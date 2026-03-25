@@ -295,6 +295,53 @@ module.exports = (temporalClient, config) => {
     });
 
     /**
+     * GET /bulk/progress/:workflowId
+     * Query the live progress state of a running (or completed) workflow.
+     * Calls the Temporal query handler registered in the worker as 'getProgress'.
+     */
+    router.get('/progress/:workflowId', async (req, res) => {
+        if (!temporalClient) {
+            return res.status(503).json({ error: 'Temporal client not available' });
+        }
+        try {
+            const { workflowId } = req.params;
+            const handle = temporalClient.workflow.getHandle(workflowId);
+            const [description, progress] = await Promise.all([
+                handle.describe(),
+                handle.query('getProgress'),
+            ]);
+            const batchId = workflowId.replace(/^batch-/, '');
+            return res.json({
+                workflowId,
+                batchId,
+                status: description.status.name,
+                progress: {
+                    totalRequested: progress.totalRequested,
+                    processed: progress.processed,
+                    successful: progress.successful,
+                    failed: progress.failed,
+                    percentage: progress.percentage,
+                },
+                meta: {
+                    startedAt: progress.startedAt,
+                    updatedAt: progress.updatedAt,
+                    completedAt: progress.completedAt,
+                    message: progress.message,
+                    lastSuccessFile: progress.lastSuccessFile,
+                    lastFailedFile: progress.lastFailedFile,
+                    error: progress.error,
+                },
+            });
+        } catch (err) {
+            debugBBulkApi(`[progress] Failed for workflowId=${req.params.workflowId}: ${err.message}`);
+            if (err.message?.includes('not found') || err.name === 'WorkflowNotFoundError') {
+                return res.status(404).json({ error: 'Workflow not found', message: err.message });
+            }
+            return res.status(500).json({ error: 'Failed to query workflow progress', message: err.message });
+        }
+    });
+
+    /**
      * Sanity check route
      */
     router.get("/test", async (req, res) => {

@@ -1,4 +1,4 @@
-import { proxyActivities, log } from '@temporalio/workflow';
+import { proxyActivities, log, defineQuery, setHandler } from '@temporalio/workflow';
 import type * as convertDeps from '../activities/convertImage';
 import type * as metadataDeps from '../activities/metadataActivity';
 import type * as persistDeps from '../activities/persistToMinio';
@@ -48,6 +48,9 @@ interface BatchProgressState {
   error: string | null;
 }
 
+// Query definition — exported so the API client can reference the same name
+export const getProgressQuery = defineQuery<BatchProgressState>('getProgress');
+
 /**
  * Predict the final AVIF object name.
  * e.g. albumName="test", filename="IMG_4293.HEIC" -> "test/IMG_4293.avif"
@@ -80,6 +83,9 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     lastFailedFile: null,
     error: null,
   };
+
+  // Register query handler — returns a snapshot of progressState at any point
+  setHandler(getProgressQuery, () => ({ ...progressState }));
 
   if (!albumName) {
     throw new Error(`Missing albumName/folder for batch ${batchId}`);

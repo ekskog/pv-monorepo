@@ -8,6 +8,11 @@ metadata:
 spec:
   replicas: 3
   revisionHistoryLimit: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: pv-avif-converter

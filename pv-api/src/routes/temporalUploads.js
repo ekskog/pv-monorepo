@@ -118,9 +118,15 @@ module.exports = (temporalClient, config) => {
             return res.status(503).json({ error: "Temporal client not available" });
         }
         try {
+            const requestStartedAt = Date.now();
             const workflowId = req.params.workflowId;
+            debugBBulkApi(`[status] Request started for workflowId=${workflowId}`);
             const handle = temporalClient.workflow.getHandle(workflowId);
+            debugBBulkApi(`[status] Calling describe() for workflowId=${workflowId}`);
             const description = await handle.describe();
+            debugBBulkApi(
+                `[status] describe() completed for workflowId=${workflowId} in ${Date.now() - requestStartedAt}ms`
+            );
 
             const status = description.status.name;
             const response = {
@@ -132,10 +138,20 @@ module.exports = (temporalClient, config) => {
 
             // Return payload for closed workflows without blocking running ones.
             if (status === 'COMPLETED') {
+                const resultStartedAt = Date.now();
+                debugBBulkApi(`[status] Calling result() for completed workflowId=${workflowId}`);
                 response.result = await handle.result();
+                debugBBulkApi(
+                    `[status] result() completed for workflowId=${workflowId} in ${Date.now() - resultStartedAt}ms`
+                );
             } else if (['FAILED', 'TIMED_OUT', 'TERMINATED', 'CANCELED', 'CANCELLED'].includes(status)) {
                 try {
+                    const resultStartedAt = Date.now();
+                    debugBBulkApi(`[status] Calling result() for terminal workflowId=${workflowId}, status=${status}`);
                     await handle.result();
+                    debugBBulkApi(
+                        `[status] result() unexpectedly resolved for terminal workflowId=${workflowId} in ${Date.now() - resultStartedAt}ms`
+                    );
                 } catch (resultError) {
                     response.error = {
                         name: resultError?.name,
@@ -144,8 +160,12 @@ module.exports = (temporalClient, config) => {
                 }
             }
 
+            debugBBulkApi(
+                `[status] Responding for workflowId=${workflowId}, status=${status}, totalDurationMs=${Date.now() - requestStartedAt}`
+            );
             res.json(response);
         } catch (err) {
+            debugBBulkApi(`[status] Failed for workflowId=${req.params.workflowId}: ${err.message}`);
             res.status(404).json({ error: "Workflow not found", message: err.message });
         }
     });
@@ -161,6 +181,11 @@ module.exports = (temporalClient, config) => {
         if (!temporalClient) {
             return res.status(503).json({ error: 'Temporal client not available' });
         }
+
+        const requestStartedAt = Date.now();
+        debugBBulkApi(
+            `[jobs] Request started with query=${JSON.stringify(req.query || {})}`
+        );
 
         const fromIso = toIsoStringOrNull(req.query.from);
         const toIso = toIsoStringOrNull(req.query.to);
@@ -183,15 +208,30 @@ module.exports = (temporalClient, config) => {
         try {
             const jobs = [];
             let scanned = 0;
+            let matched = 0;
+            let lastProgressLogAt = Date.now();
+
+            debugBBulkApi(
+                `[jobs] Starting Temporal visibility scan (limit=${limit}, from=${fromIso || 'none'}, to=${toIso || 'none'})`
+            );
 
             // Iterate visibility results and filter to bulk jobs by workflow id prefix.
             for await (const execution of temporalClient.workflow.list()) {
                 scanned += 1;
 
+                if (Date.now() - lastProgressLogAt >= 5000) {
+                    debugBBulkApi(
+                        `[jobs] Scan progress: scanned=${scanned}, matched=${matched}, collected=${jobs.length}, elapsedMs=${Date.now() - requestStartedAt}`
+                    );
+                    lastProgressLogAt = Date.now();
+                }
+
                 const workflowId = execution?.workflowId || execution?.execution?.workflowId;
                 if (!workflowId || !workflowId.startsWith('batch-')) {
                     continue;
                 }
+
+                matched += 1;
 
                 const startTimeRaw = execution?.startTime || execution?.executionTime || execution?.historyStartTime;
                 const closeTimeRaw = execution?.closeTime;
@@ -216,6 +256,9 @@ module.exports = (temporalClient, config) => {
                 });
 
                 if (jobs.length >= limit) {
+                    debugBBulkApi(
+                        `[jobs] Reached limit=${limit} after scanned=${scanned}, matched=${matched}, elapsedMs=${Date.now() - requestStartedAt}`
+                    );
                     break;
                 }
             }
@@ -225,6 +268,10 @@ module.exports = (temporalClient, config) => {
                 const bTime = b.startTime ? new Date(b.startTime).getTime() : 0;
                 return bTime - aTime;
             });
+
+            debugBBulkApi(
+                `[jobs] Responding success: scanned=${scanned}, matched=${matched}, returned=${jobs.length}, totalDurationMs=${Date.now() - requestStartedAt}`
+            );
 
             return res.json({
                 success: true,
@@ -237,6 +284,9 @@ module.exports = (temporalClient, config) => {
             });
         } catch (error) {
             console.error('[Bulk jobs] Failed to list workflows:', error);
+            debugBBulkApi(
+                `[jobs] Failed after elapsedMs=${Date.now() - requestStartedAt}: ${error?.message || String(error)}`
+            );
             return res.status(500).json({
                 error: 'Failed to list bulk jobs',
                 message: error?.message || String(error),

@@ -16,6 +16,16 @@ spec:
       labels:
         app: pv-avif-converter
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - pv-avif-converter
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: pv-avif-converter
           image: ghcr.io/ekskog/pv-converter:latest

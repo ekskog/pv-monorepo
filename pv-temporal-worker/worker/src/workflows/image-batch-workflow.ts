@@ -33,6 +33,21 @@ export interface BatchResult {
   processingTimeMs: number;
 }
 
+interface BatchProgressState {
+  totalRequested: number;
+  processed: number;
+  successful: number;
+  failed: number;
+  percentage: number;
+  startedAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  message: string | null;
+  lastSuccessFile: string | null;
+  lastFailedFile: string | null;
+  error: string | null;
+}
+
 /**
  * Predict the final AVIF object name.
  * e.g. albumName="test", filename="IMG_4293.HEIC" -> "test/IMG_4293.avif"
@@ -50,6 +65,21 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
   const startTime = Date.now();
   const { batchId, batchDir, images } = input;
   const albumName = input.albumName || input.folder;
+  const nowIso = new Date().toISOString();
+  const progressState: BatchProgressState = {
+    totalRequested: images.length,
+    processed: 0,
+    successful: 0,
+    failed: 0,
+    percentage: 0,
+    startedAt: nowIso,
+    updatedAt: nowIso,
+    completedAt: null,
+    message: `Accepted ${images.length} images for processing`,
+    lastSuccessFile: null,
+    lastFailedFile: null,
+    error: null,
+  };
 
   if (!albumName) {
     throw new Error(`Missing albumName/folder for batch ${batchId}`);
@@ -100,6 +130,21 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
   const successful = imageResults.filter((r) => r.success).length;
   const failed     = imageResults.filter((r) => !r.success).length;
 
+  progressState.successful = successful;
+  progressState.failed = failed;
+  progressState.processed = successful + failed;
+  progressState.percentage =
+    progressState.totalRequested > 0
+      ? Math.round((progressState.processed / progressState.totalRequested) * 100)
+      : 0;
+  progressState.completedAt = new Date().toISOString();
+  progressState.updatedAt = progressState.completedAt;
+  progressState.message = 'Batch processing completed';
+  const firstFailure = imageResults.find((r) => !r.success);
+  if (firstFailure) {
+    progressState.error = firstFailure.error;
+  }
+
   log.info(`Batch ${batchId} complete: ${successful} succeeded, ${failed} failed`);
 
   // Cleanup NFS scratch directory regardless of individual failures
@@ -111,9 +156,9 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
   }
 
   return {
-    totalImages: images.length,
-    successful,
-    failed,
+    totalImages: progressState.totalRequested,
+    successful: progressState.successful,
+    failed: progressState.failed,
     results: imageResults,
     processingTimeMs: Date.now() - startTime,
   };

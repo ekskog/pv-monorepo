@@ -165,7 +165,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     progressState.error = firstFailure.error;
   }
 
-  log.info(`Batch ${batchId} complete: ${successful} succeeded, ${failed} failed`);
+  log.info(`Batch ${batchId} complete: ${progressState.successful} succeeded, ${progressState.failed} failed`);
 
   // Cleanup NFS scratch directory regardless of individual failures
   try {

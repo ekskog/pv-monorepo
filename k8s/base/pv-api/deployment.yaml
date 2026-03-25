@@ -56,8 +56,8 @@ spec:
             path: /health
             port: 3000
           initialDelaySeconds: 30
-          periodSeconds: 300         # Check every 5 minutes
-          timeoutSeconds: 15
+          periodSeconds: 7200        # Check every 2 hours
+          timeoutSeconds: 45
           failureThreshold: 2
         resources:
           requests:

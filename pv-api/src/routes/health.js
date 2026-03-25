@@ -111,8 +111,9 @@ async function checkTemporalHealth(temporalClient) {
  */
 async function checkConverterHealth() {
   const converterUrl = config.converter.url;
-  // Keep converter timeout below the overall probe timeout too
-  const timeout = Math.min(parseInt(config.converter.timeout, 10) || 4000, 4000);
+  // Allow up to 30 s: a converter pod may be mid-conversion and legitimately
+  // slow to respond to /health without being unhealthy.
+  const timeout = Math.min(parseInt(config.converter.timeout, 10) || 30000, 30000);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);

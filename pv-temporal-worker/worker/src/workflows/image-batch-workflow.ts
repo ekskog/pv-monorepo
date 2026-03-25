@@ -115,6 +115,17 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
 
         log.error(`✗ ${image.filename} failed: ${errors.join(' | ')}`);
 
+        // Update progress state incrementally on failure
+        progressState.failed++;
+        progressState.processed = progressState.successful + progressState.failed;
+        progressState.percentage =
+          progressState.totalRequested > 0
+            ? Math.round((progressState.processed / progressState.totalRequested) * 100)
+            : 0;
+        progressState.updatedAt = new Date().toISOString();
+        progressState.lastFailedFile = image.filename;
+        progressState.message = `Processing images (${progressState.processed} of ${progressState.totalRequested} done)`;
+
         return {
           filename: image.filename,
           success: false as const,
@@ -123,6 +134,17 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
       }
 
       log.info(`✓ ${image.filename} fully processed`);
+
+      // Update progress state incrementally on success
+      progressState.successful++;
+      progressState.processed = progressState.successful + progressState.failed;
+      progressState.percentage =
+        progressState.totalRequested > 0
+          ? Math.round((progressState.processed / progressState.totalRequested) * 100)
+          : 0;
+      progressState.updatedAt = new Date().toISOString();
+      progressState.lastSuccessFile = image.filename;
+      progressState.message = `Processing images (${progressState.processed} of ${progressState.totalRequested} done)`;
 
       return {
         filename: image.filename,
@@ -133,19 +155,11 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     })
   );
 
-  const successful = imageResults.filter((r) => r.success).length;
-  const failed     = imageResults.filter((r) => !r.success).length;
-
-  progressState.successful = successful;
-  progressState.failed = failed;
-  progressState.processed = successful + failed;
-  progressState.percentage =
-    progressState.totalRequested > 0
-      ? Math.round((progressState.processed / progressState.totalRequested) * 100)
-      : 0;
+  // Finalize terminal state
   progressState.completedAt = new Date().toISOString();
   progressState.updatedAt = progressState.completedAt;
   progressState.message = 'Batch processing completed';
+  progressState.percentage = 100; // All images have been processed
   const firstFailure = imageResults.find((r) => !r.success);
   if (firstFailure) {
     progressState.error = firstFailure.error;

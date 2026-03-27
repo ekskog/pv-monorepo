@@ -306,21 +306,32 @@ async request(endpoint, options = {}) {
 
     // Use a lightweight fetch here so we can quietly handle 404 (no progress yet)
     const API_BASE_URL = this.getApiBaseUrl();
-    const url = `${API_BASE_URL}/bulk/progress/${encodeURIComponent(batchId)}`;
-
     const headers = {
       'Content-Type': 'application/json',
     };
     const token = this.getAuthToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
+    // First try using the Temporal workflow id convention: `batch-<batchId>`
+    const workflowId = this.buildBulkWorkflowId(batchId);
+    const workflowUrl = `${API_BASE_URL}/bulk/progress/${encodeURIComponent(workflowId)}`;
+    const legacyUrl = `${API_BASE_URL}/bulk/progress/${encodeURIComponent(batchId)}`;
+
     try {
-      const resp = await fetch(url, { headers });
-      if (resp.status === 404) return null;
+      console.log('[api] getBulkJobProgress -> trying workflowUrl', workflowUrl);
+      let resp = await fetch(workflowUrl, { headers });
+      if (resp.status === 404) {
+        // workflow not found under that id - try legacy polling endpoint with raw batchId
+        console.debug('[api] workflow not found, falling back to legacy progress URL', legacyUrl);
+        resp = await fetch(legacyUrl, { headers });
+        if (resp.status === 404) return null;
+      }
+
       if (!resp.ok) {
         const err = await resp.json().catch(() => null);
         throw new Error(err?.message || `HTTP error! status: ${resp.status}`);
       }
+
       return await resp.json();
     } catch (err) {
       // Network or other error; don't spam console for expected missing-progress cases

@@ -207,11 +207,28 @@ const loadProgressForRunningJobs = async () => {
   await Promise.all(
     running.map(async (job) => {
       try {
+        console.log('[BulkUploadJobs] fetching progress for batchId=', job.batchId);
         const res = await apiService.getBulkJobProgress(job.batchId);
-        if (res && res.progress) {
-          progressMap.value = { ...progressMap.value, [job.batchId]: res.progress };
+                if (res && res.progress) {
+                  // Normalize progress shapes between Temporal and legacy SSE polling
+                  const p = res.progress;
+                  const totalVal = (p.totalRequested ?? p.total) || 1;
+                  const processedVal = p.processed ?? p.current ?? 0;
+                  const percentageVal = p.percentage ?? Math.round((processedVal / totalVal) * 100);
+                  const normalized = {
+                    total: p.total ?? p.totalRequested ?? 0,
+                    current: processedVal,
+                    uploaded: p.uploaded ?? p.successful ?? 0,
+                    failed: p.failed ?? 0,
+                    percentage: percentageVal,
+                    // keep raw for debugging
+                    _raw: p,
+                  };
+                  progressMap.value = { ...progressMap.value, [job.batchId]: normalized };
+                  console.log('[BulkUploadJobs] progress for', job.batchId, progressMap.value[job.batchId]);
         }
       } catch (e) {
+        console.debug('[BulkUploadJobs] progress fetch error for', job.batchId, e?.message || e);
         // ignore 404 / no-progress
       }
     })

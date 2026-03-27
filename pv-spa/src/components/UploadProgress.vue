@@ -125,10 +125,15 @@ const setLocalProgressFromApi = (apiResp) => {
 
 const startSSE = (jobId) => {
   try {
+    console.log('[UploadProgress] startSSE -> connecting to', `/processing-status/${jobId}`);
     eventSource = new EventSource(`/processing-status/${jobId}`);
+    eventSource.onopen = () => {
+      console.log('[UploadProgress] SSE open', jobId);
+    };
     eventSource.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data || '{}');
+        console.log('[UploadProgress] SSE message', jobId, data);
         if (data && data.progress) {
           localProgress.value = normalizeProgress(data.progress);
           localMeta.value.updatedAt = data.timestamp || new Date().toISOString();
@@ -138,6 +143,7 @@ const startSSE = (jobId) => {
       }
     };
     eventSource.onerror = () => {
+      console.warn('[UploadProgress] SSE error/closed', jobId);
       // close on error
       if (eventSource) {
         eventSource.close();
@@ -145,6 +151,7 @@ const startSSE = (jobId) => {
       }
     };
   } catch (err) {
+    console.debug('[UploadProgress] startSSE failed', err?.message || err);
     // fallback: do nothing
   }
 };
@@ -160,9 +167,14 @@ const startPolling = (workflowId) => {
   if (polling.value) return;
   const fetchOnce = async () => {
     try {
+      console.log('[UploadProgress] polling progress for', workflowId);
       const res = await fetch(`/bulk/progress/${encodeURIComponent(workflowId)}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.debug('[UploadProgress] poll non-ok response', workflowId, res.status);
+        return;
+      }
       const data = await res.json();
+      console.log('[UploadProgress] poll response for', workflowId, data);
       // expected { progress, meta, status }
       setLocalProgressFromApi(data.progress ? data : data);
       // If workflow status indicates terminal, stop polling
@@ -171,6 +183,7 @@ const startPolling = (workflowId) => {
         stopPolling();
       }
     } catch (err) {
+      console.debug('[UploadProgress] polling error for', workflowId, err?.message || err);
       // ignore transient fetch errors
     }
   };

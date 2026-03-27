@@ -17,25 +17,28 @@ export async function reportProgress(progress: BatchProgressState | any): Promis
       lastFile: progress.lastSuccessFile || progress.lastFailedFile || null,
       timestamp: progress.updatedAt || new Date().toISOString(),
       state: progress.completedAt ? 'complete' : 'running',
-      message: progress.message,
+      message: progress?.message ?? null,
     };
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (INTERNAL_TOKEN) headers['x-internal-token'] = INTERNAL_TOKEN;
 
-    // Use global fetch (Node 18+), fallback to require('node-fetch') if not available
-    const _fetch = (typeof fetch !== 'undefined') ? fetch : (await import('node-fetch')).default;
+    // Use global fetch available in Node 18+ via globalThis. If not present, skip reporting.
+    const _fetch = (globalThis as any).fetch;
+    if (typeof _fetch !== 'function') {
+      // No fetch available in this runtime — skip reporting silently
+      return;
+    }
 
     await _fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-      // small timeout is enforced by network infra; keep request short
     });
-  } catch (err) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
     // Activities should not throw for reporting failures – just log and continue
-    // console.warn is safe inside activity context
     // eslint-disable-next-line no-console
-    console.warn('reportProgress failed:', err && err.message ? err.message : err);
+    console.warn('reportProgress failed:', msg);
   }
 }

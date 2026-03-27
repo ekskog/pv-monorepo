@@ -19,7 +19,7 @@ export async function extractAndPersistMetadata(
   filename: string,
   objectName: string,
 ): Promise<MetadataResult> {
-  console.log(`[metadataActivity] Starting metadata extraction for ${filename} -> ${objectName}`);
+  // console.log(`[metadataActivity] Starting metadata extraction for ${filename} -> ${objectName}`);
 
   const imageBuffer = await fs.readFile(imagePath);
 
@@ -42,7 +42,7 @@ export async function extractAndPersistMetadata(
 
   const result = await response.json() as { status: string; object_name: string };
 
-  console.log(`[metadataActivity] ✓ Metadata extracted and written to MinIO for ${filename}`);
+  // console.log(`[metadataActivity] ✓ Metadata extracted and written to MinIO for ${filename}`);
 
   return {
     filename,

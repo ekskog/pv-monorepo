@@ -15,13 +15,13 @@ async function run() {
   if (!TEMPORAL_NAMESPACE) throw new Error('TEMPORAL_NAMESPACE environment variable is required');
   if (!TASK_QUEUE)         throw new Error('TASK_QUEUE environment variable is required');
 
-  console.log('Starting Temporal worker...');
-  console.log(`Temporal:   ${TEMPORAL_ADDRESS}`);
-  console.log(`Namespace:  ${TEMPORAL_NAMESPACE}`);
-  console.log(`Task queue: ${TASK_QUEUE}`);
+  // console.log('Starting Temporal worker...');
+  // console.log(`Temporal:   ${TEMPORAL_ADDRESS}`);
+  // console.log(`Namespace:  ${TEMPORAL_NAMESPACE}`);
+  // console.log(`Task queue: ${TASK_QUEUE}`);
 
   const connection = await NativeConnection.connect({ address: TEMPORAL_ADDRESS });
-  console.log('✓ Connected to Temporal');
+  // console.log('✓ Connected to Temporal');
 
   const worker = await Worker.create({
     connection,
@@ -36,8 +36,8 @@ async function run() {
     },
   });
 
-  console.log('✓ Worker ready');
-  console.log('🚀 Listening for tasks...');
+  // console.log('✓ Worker ready');
+  // console.log('🚀 Listening for tasks...');
 
   await worker.run();
 }

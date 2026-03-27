@@ -278,14 +278,14 @@ class MetadataService {
   async getAddressFromCoordinates(coordinates, filename) {
     if (!coordinates || coordinates === "not found") return "not found";
     if (!this.mapboxToken) {
-      debugGps(`MAPBOX_TOKEN not configured`);
+      //debugGps(`MAPBOX_TOKEN not configured`);
       return "API key not configured";
     }
 
     try {
       const [lat, lng] = coordinates.split(",");
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${this.mapboxToken}&types=address,poi,place`;
-      debugGps(`Reverse geocoding: ${coordinates} for ${filename}`);
+      //debugGps(`Reverse geocoding: ${coordinates} for ${filename}`);
 
       const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
       if (!response.ok) return `API error: ${response.status}`;
@@ -296,12 +296,12 @@ class MetadataService {
           data.features[0].place_name ||
           data.features[0].text ||
           "Address not found";
-        debugGps(`Found address: ${address}`);
+        //debugGps(`Found address: ${address}`);
         return address;
       }
       return "Address not found";
     } catch (error) {
-      debugGps(`Address lookup failed for ${coordinates}: ${error.message}`);
+      //debugGps(`Address lookup failed for ${coordinates}: ${error.message}`);
       return "Address lookup failed";
     }
   }

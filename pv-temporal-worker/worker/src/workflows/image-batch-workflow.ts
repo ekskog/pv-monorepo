@@ -92,7 +92,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     throw new Error(`Missing albumName/folder for batch ${batchId}`);
   }
 
-  log.info(`Starting batch ${batchId} with ${images.length} images, album: ${albumName}`);
+  // log.info(`Starting batch ${batchId} with ${images.length} images, album: ${albumName}`);
 
   let lastReportedPercent = -1;
 
@@ -100,7 +100,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     images.map(async (image: ImageFile) => {
       const objectName = predictObjectName(albumName, image.filename);
 
-      log.info(`Processing ${image.filename} -> ${objectName}`);
+      // log.info(`Processing ${image.filename} -> ${objectName}`);
 
       // Run conversion and metadata extraction in parallel
       const [conversionResult, metadataResult] = await Promise.allSettled([
@@ -116,7 +116,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
         if (conversionFailed) errors.push(`Conversion: ${conversionResult.reason}`);
         if (metadataFailed)   errors.push(`Metadata: ${metadataResult.reason}`);
 
-        log.error(`✗ ${image.filename} failed: ${errors.join(' | ')}`);
+        // log.error(`✗ ${image.filename} failed: ${errors.join(' | ')}`);
 
         // Update progress state incrementally on failure
         progressState.failed++;
@@ -147,7 +147,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
         };
       }
 
-      log.info(`✓ ${image.filename} fully processed`);
+      // log.info(`✓ ${image.filename} fully processed`);
 
       // Update progress state incrementally on success
       progressState.successful++;
@@ -189,14 +189,14 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     progressState.error = firstFailure.error;
   }
 
-  log.info(`Batch ${batchId} complete: ${progressState.successful} succeeded, ${progressState.failed} failed`);
+  // log.info(`Batch ${batchId} complete: ${progressState.successful} succeeded, ${progressState.failed} failed`);
 
   // Cleanup NFS scratch directory regardless of individual failures
   try {
     await cleanupBatch(batchDir);
-    log.info(`✓ Cleaned up NFS directory: ${batchDir}`);
+    // log.info(`✓ Cleaned up NFS directory: ${batchDir}`);
   } catch (err) {
-    log.error(`NFS cleanup failed: ${String(err)}`);
+    // log.error(`NFS cleanup failed: ${String(err)}`);
   }
 
   return {

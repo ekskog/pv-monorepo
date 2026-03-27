@@ -47,13 +47,13 @@ export async function persistToMinio(
       { 'Content-Type': 'image/avif' }
     );
 
-    console.log(`✓ Persisted to MinIO: ${BULK_UPLOAD_BUCKET}/${objectName}`);
+    // console.log(`✓ Persisted to MinIO: ${BULK_UPLOAD_BUCKET}/${objectName}`);
     return {
       minioPath: `${BULK_UPLOAD_BUCKET}/${objectName}`,
       objectName,
     };
   } catch (error) {
-    console.error(`Failed MinIO upload:`, error);
+    // console.error(`Failed MinIO upload:`, error);
     throw error;
   }
 }

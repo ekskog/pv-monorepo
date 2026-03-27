@@ -40,7 +40,7 @@ const AVIF_CONVERTER_URL = process.env.AVIF_CONVERTER_URL ||
 const MINIO_BUCKET = process.env.MINIO_BUCKET_NAME || 'photovault';
 
 export async function convertImage(image: ImageFile, objectName: string): Promise<ConversionResult> {
-  console.log(`[convertImage] Starting conversion for ${image.filename} -> ${objectName}`);
+  // console.log(`[convertImage] Starting conversion for ${image.filename} -> ${objectName}`);
 
   const imageBuffer = await fs.readFile(image.path);
   const formData = new FormData();
@@ -65,7 +65,7 @@ export async function convertImage(image: ImageFile, objectName: string): Promis
     throw new Error(`Converter reported failure for ${image.filename}`);
   }
 
-  console.log(`[convertImage] ✓ Converted and written to MinIO: ${objectName}`);
+  // console.log(`[convertImage] ✓ Converted and written to MinIO: ${objectName}`);
 
   return {
     filename: image.filename,

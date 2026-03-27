@@ -1,6 +1,7 @@
 // force worker rebuild to fix temporal connection issues 18/03/2026
 
 import { NativeConnection, Worker } from '@temporalio/worker';
+import { existsSync } from 'fs';
 import * as convertActivities from './activities/convertImage';
 import * as metadataActivities from './activities/metadataActivity';
 import * as persistActivities from './activities/persistToMinio'; // kept for cleanupBatch
@@ -23,11 +24,23 @@ async function run() {
   const connection = await NativeConnection.connect({ address: TEMPORAL_ADDRESS });
   // console.log('✓ Connected to Temporal');
 
+  const workflowsBundlePath = process.env.WORKFLOWS_BUNDLE_PATH;
+  let workflowsPath: string;
+  if (workflowsBundlePath && existsSync(workflowsBundlePath)) {
+    workflowsPath = workflowsBundlePath;
+  } else {
+    if (workflowsBundlePath) {
+      // eslint-disable-next-line no-console
+      console.warn(`WORKFLOWS_BUNDLE_PATH set but not found: ${workflowsBundlePath} — falling back to runtime bundle`);
+    }
+    workflowsPath = require.resolve('./workflows/image-batch-workflow');
+  }
+
   const worker = await Worker.create({
     connection,
     namespace: TEMPORAL_NAMESPACE,
     taskQueue: TASK_QUEUE,
-    workflowsPath: process.env.WORKFLOWS_BUNDLE_PATH || require.resolve('./workflows/image-batch-workflow'),
+    workflowsPath,
     activities: {
       ...convertActivities,
       ...metadataActivities,

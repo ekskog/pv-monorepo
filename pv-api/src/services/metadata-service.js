@@ -60,7 +60,7 @@ class MetadataService {
   async callPythonService(buffer, filename) {
     const url = `http://pv-metadata-service/extract`;
     try {
-      debugMetadata(`[python] Calling Python metadata service for ${filename}`);
+      //debugMetadata(`[python] Calling Python metadata service for ${filename}`);
 
       const FormData = require("form-data");
       const form = new FormData();
@@ -74,18 +74,14 @@ class MetadataService {
       });
 
       if (!response.ok) {
-        debugMetadata(
-          `[python] Service returned ${response.status} for ${filename}`,
-        );
+        //debugMetadata(`[python] Service returned ${response.status} for ${filename}`);
         return;
       }
 
       const result = await response.json();
-      debugMetadata(
-        `[python] Result for ${filename}: ${JSON.stringify(result, null, 2)}`,
-      );
+      //debugMetadata(`[python] Result for ${filename}: ${JSON.stringify(result, null, 2)}`);
     } catch (err) {
-      debugMetadata(`[python] Call failed for ${filename}: ${err.message}`);
+      //debugMetadata(`[python] Call failed for ${filename}: ${err.message}`);
     }
   }
 
@@ -112,7 +108,7 @@ class MetadataService {
     const metadata = this.emptyMetadata(filename);
 
     try {
-      debugMetadata(`Extracting metadata from: ${filename}`);
+      //debugMetadata(`Extracting metadata from: ${filename}`);
 
       // Fire Python service in parallel — logs only, does not affect this flow
       this.callPythonService(buffer, filename).catch(() => {});
@@ -120,7 +116,7 @@ class MetadataService {
       let raw;
 
       if (this.isHeic(buffer)) {
-        debugMetadata(`HEIC detected, using exiftool-vendored for ${filename}`);
+        //debugMetadata(`HEIC detected, using exiftool-vendored for ${filename}`);
         raw = await this.extractHeicMetadata(buffer, filename);
 
         const date = raw.DateTimeOriginal || raw.CreateDate || raw.DateTime;
@@ -161,7 +157,7 @@ class MetadataService {
         metadata.dimensions.resolution.x = raw.XResolution || "not found";
         metadata.dimensions.resolution.y = raw.YResolution || "not found";
       } else {
-        debugMetadata(`Non-HEIC, using exifr for ${filename}`);
+        //debugMetadata(`Non-HEIC, using exifr for ${filename}`);
         raw = await exifr.parse(buffer, {
           gps: true,
           tiff: true,
@@ -204,7 +200,7 @@ class MetadataService {
         });
 
         if (!raw) {
-          debugMetadata(`No EXIF data found for ${filename}`);
+          //debugMetadata(`No EXIF data found for ${filename}`);
           return metadata;
         }
 
@@ -265,12 +261,10 @@ class MetadataService {
         metadata.dimensions.resolution.y = raw.YResolution || "not found";
       }
 
-      debugMetadata(`Final metadata for ${filename}:`, metadata);
+      //debugMetadata(`Final metadata for ${filename}:`, metadata);
       return metadata;
     } catch (error) {
-      debugMetadata(
-        `Error extracting metadata from ${filename}: ${error.message}`,
-      );
+      //debugMetadata(`Error extracting metadata from ${filename}: ${error.message}`);
       return this.emptyMetadata(filename);
     }
   }
@@ -356,7 +350,7 @@ class MetadataService {
       );
       return true;
     } catch (error) {
-      debugMetadata(`Failed to update folder metadata: ${error.message}`);
+      //debugMetadata(`Failed to update folder metadata: ${error.message}`);
       return false;
     }
   }

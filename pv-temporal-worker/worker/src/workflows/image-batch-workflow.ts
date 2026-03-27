@@ -2,10 +2,11 @@ import { proxyActivities, log, defineQuery, setHandler } from '@temporalio/workf
 import type * as convertDeps from '../activities/convertImage';
 import type * as metadataDeps from '../activities/metadataActivity';
 import type * as persistDeps from '../activities/persistToMinio';
+import type * as reportDeps from '../activities/reportProgress';
 
-type AllActivities = typeof convertDeps & typeof metadataDeps & typeof persistDeps;
+type AllActivities = typeof convertDeps & typeof metadataDeps & typeof persistDeps & typeof reportDeps;
 
-const { convertImage, extractAndPersistMetadata, cleanupBatch } =
+const { convertImage, extractAndPersistMetadata, cleanupBatch, reportProgress } =
   proxyActivities<AllActivities>({
     startToCloseTimeout: '60 minutes',
     retry: { maximumAttempts: 5 },
@@ -33,7 +34,7 @@ export interface BatchResult {
   processingTimeMs: number;
 }
 
-interface BatchProgressState {
+export interface BatchProgressState {
   totalRequested: number;
   processed: number;
   successful: number;
@@ -93,6 +94,8 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
 
   log.info(`Starting batch ${batchId} with ${images.length} images, album: ${albumName}`);
 
+  let lastReportedPercent = -1;
+
   const imageResults = await Promise.all(
     images.map(async (image: ImageFile) => {
       const objectName = predictObjectName(albumName, image.filename);
@@ -126,6 +129,17 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
         progressState.lastFailedFile = image.filename;
         progressState.message = `Processing images (${progressState.processed} of ${progressState.totalRequested} done)`;
 
+        // Maybe report aggregated progress for the UI every N files
+        try {
+          if (progressState.processed % 5 === 0 || progressState.percentage === 100) {
+            // include batchId to help the API map to workflow/job id
+            await reportProgress({ ...progressState, batchId });
+            lastReportedPercent = progressState.percentage;
+          }
+        } catch (e) {
+          // swallow reporting errors
+        }
+
         return {
           filename: image.filename,
           success: false as const,
@@ -145,6 +159,16 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
       progressState.updatedAt = new Date().toISOString();
       progressState.lastSuccessFile = image.filename;
       progressState.message = `Processing images (${progressState.processed} of ${progressState.totalRequested} done)`;
+
+      // Throttled reporting: only report every 5 processed items or on completion
+      try {
+        if (progressState.processed % 5 === 0 || progressState.percentage === 100) {
+          await reportProgress({ ...progressState, batchId });
+          lastReportedPercent = progressState.percentage;
+        }
+      } catch (e) {
+        // ignore reporting errors
+      }
 
       return {
         filename: image.filename,

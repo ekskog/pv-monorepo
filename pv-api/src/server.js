@@ -90,11 +90,12 @@ const albumRoutes = require("./routes/albums");
 const statRoutes = require("./routes/stats");
 const temporalRoutes = require("./routes/temporalUploads"); // Added this for the new Temporal route
 
-// Store active SSE connections and pending jobs by job ID
-const sseConnections = new Map();
+// Store pending jobs by job ID (used by upload/album routes)
 const pendingJobs = new Map();
-// In-memory progress store for dev UI polling
-const progressStore = new Map();
+
+// SSE functionality moved to a dedicated service
+const sseService = require('./services/sse-service');
+const { attachSseRoutes, sendSSEEvent, persistProgress } = sseService;
 
 const sendSSEEvent = (jobId, eventType, data = {}) => {
   const connection = sseConnections.get(jobId);
@@ -117,19 +118,16 @@ const sendSSEEvent = (jobId, eventType, data = {}) => {
     connection.write('');
     debugSSE(`[server.js (72)] Event "${eventType}" sent to job ${jobId}`);
 
-    // Persist progress updates for polling clients
+    // Persist progress updates for polling clients via service
     persistProgress(jobId, data);
 
     if (eventType === "complete") {
       // Send final message and end the stream
       connection.end();
-      sseConnections.delete(jobId);
-      // Remove stored progress when job completes
-      progressStore.delete(jobId);
+      // Note: sseConnections state is owned by the sse-service
     }
   } catch (error) {
     debugSSE(`[server.js (97)] Error sending to job ${jobId}: ${error.message}`);
-    sseConnections.delete(jobId);
   }
 };
 
@@ -299,70 +297,12 @@ async function processFilesInBackground(
 }
 
 // SSE endpoint - for monitoring upload progress
-app.get("/processing-status/:jobId", (req, res) => {
-  const jobId = req.params.jobId;
-  debugSSE(`[server.js (206)] Client connecting for job ${jobId}`);
-
-  // Set SSE headers
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Cache-Control",
-    "X-Accel-Buffering": "no", // Disable nginx buffering if present
+// Attach SSE routes (processing-status) and wire up pending-job starter
+attachSseRoutes(app, { pendingJobs, onStartPendingJob: (files, bucketName, folderPath, startTime, jobId) => {
+  processFilesInBackground(files, bucketName, folderPath, startTime, jobId).catch((error) => {
+    debugSSE(`[server.js] Error starting background processing for job ${jobId}: ${error.message}`);
   });
-
-  // Disable Nagle's algorithm to reduce buffering
-  if (res.socket) {
-    res.socket.setNoDelay(true);
-  }
-
-  // Flush headers immediately
-  res.flushHeaders();
-
-  // Store connection
-  sseConnections.set(jobId, res);
-  debugSSE(`[server.js (220)] Connection stored for job ${jobId}. Total connections: ${sseConnections.size}`);
-
-  // Send initial connection confirmation
-  const confirmationData = JSON.stringify({
-    type: "connected",
-    jobId,
-    message: "SSE connection established",
-  });
-
-  res.write(`data: ${confirmationData}\n\n`);
-  debugSSE(`[server.js (230)] Sent ${confirmationData} for job ${jobId}`);
-
-  // Check if there's a pending job and start it
-  const pendingJob = pendingJobs.get(jobId);
-  if (pendingJob) {
-    debugSSE(`[server.js (234)] Found pending job ${jobId}, starting processing...`);
-    pendingJobs.delete(jobId);
-
-    // Start the background processing now that we have the SSE connection
-    const { files, bucketName, folderPath } = pendingJob;
-    const startTime = Date.now();
-
-    processFilesInBackground(files, bucketName, folderPath, startTime, jobId).catch((error) => {
-      debugSSE(`[server.js (241)] Error starting background processing for job ${jobId}:`, error.message);
-    });
-  } else {
-    debugSSE(`[server.js (244)] No pending job found for ${jobId} (already processed or invalid job)`);
-  }
-
-  // Handle client disconnect
-  req.on("close", () => {
-    debugSSE(`[server.js (248)] Client disconnected for job ${jobId}`);
-    sseConnections.delete(jobId);
-  });
-
-  req.on("error", (error) => {
-    debugSSE(`[server.js (252)] SSE connection error for job ${jobId}:`, error.message);
-    sseConnections.delete(jobId);
-  });
-});
+} });
 
 /**
  * Lightweight progress polling endpoint for UI

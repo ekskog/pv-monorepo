@@ -1,6 +1,6 @@
 import type { BatchProgressState } from '../workflows/image-batch-workflow';
 
-const PROGRESS_API_URL = 'http://pv-api-service:3000';
+const PROGRESS_API_URL = 'http://pv-api-service';
 
 export async function reportProgress(progress: BatchProgressState | any): Promise<void> {
   const url = `${PROGRESS_API_URL.replace(/\/$/, '')}/internal/bulk/progress`;

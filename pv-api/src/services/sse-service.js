@@ -14,6 +14,15 @@ function persistProgress(jobId, data = {}) {
   }
 }
 
+function getProgress(jobId) {
+  try {
+    return progressStore.has(jobId) ? progressStore.get(jobId) : null;
+  } catch (e) {
+    debugSSE(`[sse-service] Failed to get progress for ${jobId}: ${e.message}`);
+    return null;
+  }
+}
+
 function sendSSEEvent(jobId, eventType, data = {}) {
   const connection = sseConnections.get(jobId);
   if (!connection) {
@@ -110,4 +119,5 @@ module.exports = {
   attachSseRoutes,
   sendSSEEvent,
   persistProgress,
+  getProgress,
 };

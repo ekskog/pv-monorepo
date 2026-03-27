@@ -95,53 +95,7 @@ const pendingJobs = new Map();
 
 // SSE functionality moved to a dedicated service
 const sseService = require('./services/sse-service');
-const { attachSseRoutes, sendSSEEvent, persistProgress } = sseService;
-
-const sendSSEEvent = (jobId, eventType, data = {}) => {
-  const connection = sseConnections.get(jobId);
-  if (!connection) {
-    debugSSE(`[server.js (58)] No connection found for job ${jobId}`);
-    return;
-  }
-
-  const eventData = {
-    type: eventType,
-    timestamp: new Date().toISOString(),
-    ...data,
-  };
-
-  const message = `data: ${JSON.stringify(eventData)}\n\n`;
-
-  try {
-    connection.write(message);
-    // Force a flush by writing an empty chunk
-    connection.write('');
-    debugSSE(`[server.js (72)] Event "${eventType}" sent to job ${jobId}`);
-
-    // Persist progress updates for polling clients via service
-    persistProgress(jobId, data);
-
-    if (eventType === "complete") {
-      // Send final message and end the stream
-      connection.end();
-      // Note: sseConnections state is owned by the sse-service
-    }
-  } catch (error) {
-    debugSSE(`[server.js (97)] Error sending to job ${jobId}: ${error.message}`);
-  }
-};
-
-// Persist latest progress updates so the UI can poll for progress
-// Note: data is user-provided from background process; only store when progress is present
-const persistProgress = (jobId, data = {}) => {
-  if (data && data.progress) {
-    try {
-      progressStore.set(jobId, data.progress);
-    } catch (e) {
-      debugServer(`Failed to persist progress for ${jobId}: ${e.message}`);
-    }
-  }
-};
+const { attachSseRoutes, sendSSEEvent, persistProgress, getProgress } = sseService;
 
 // Background processing function for asynchronous uploads with SSE updates
 async function processFilesInBackground(
@@ -268,7 +222,6 @@ async function processFilesInBackground(
     // Schedule connection cleanup - give client time to receive the completion event
     setTimeout(() => {
       debugSSE(`[server.js (177)] Cleaning up SSE connections for job ${jobId}`);
-      sseConnections.delete(jobId);
     }, 10000); // Reduced from 5 minutes to 10 seconds since job is complete
 
   } catch (error) {
@@ -291,7 +244,6 @@ async function processFilesInBackground(
     // Clean up connections after error
     setTimeout(() => {
       debugSSE(`[server.js (196)] Cleaning up SSE connections after error for job ${jobId}`);
-      sseConnections.delete(jobId);
     }, 5000);
   }
 }
@@ -313,11 +265,7 @@ app.get('/bulk/progress/:batchId', (req, res) => {
   const batchId = req.params.batchId;
   try {
     // If no progress is available yet, return success with null progress
-    if (!progressStore.has(batchId)) {
-      return res.json({ success: true, batchId, progress: null });
-    }
-
-    const progress = progressStore.get(batchId);
+    const progress = getProgress(batchId);
     return res.json({ success: true, batchId, progress });
   } catch (error) {
     console.error('[Progress] Error fetching progress for', batchId, error.message);

@@ -385,45 +385,10 @@ app.get('/bulk/progress/:batchId', (req, res) => {
   }
 });
 
-/**
- * Internal endpoint for workers to report aggregated progress snapshots.
- * Protected by an internal token (set INTERNAL_PROGRESS_TOKEN in the environment).
- * Expected body: { workflowId|batchId, processed, totalRequested, successful, failed, percentage, lastFile, timestamp, state }
- */
-app.post('/internal/bulk/progress', (req, res) => {
-  try {
-    const headerToken = req.headers['x-internal-token'] || req.headers['authorization'];
-    const expected = process.env.INTERNAL_PROGRESS_TOKEN;
-    if (expected && headerToken !== expected) {
-      debugServer('[internal/bulk/progress] Unauthorized internal progress post');
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
-
-    const body = req.body || {};
-    const jobId = body.workflowId || body.batchId;
-    if (!jobId) return res.status(400).json({ success: false, message: 'Missing workflowId/batchId' });
-
-    // Broadcast to any connected SSE clients and persist for polling
-    sendSSEEvent(jobId, 'progress', {
-      status: body.state || 'processing',
-      message: body.message || null,
-      progress: {
-        current: body.processed || null,
-        total: body.totalRequested || null,
-        percentage: body.percentage || null,
-        lastUploaded: body.lastFile || null,
-        uploaded: body.successful || null,
-        failed: body.failed || null,
-      },
-      timestamp: body.timestamp || new Date().toISOString(),
-    });
-
-    return res.json({ success: true });
-  } catch (err) {
-    debugServer('[internal/bulk/progress] Error handling internal progress:', err.message || err);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
+// Internal progress endpoint moved to the temporalUploads router
+// (pv-api/src/routes/temporalUploads.js) which is mounted at `/bulk`.
+// POST /bulk/internal/bulk/progress is handled there and receives
+// progress snapshots from workers.
 
 // Start server with database initialization
 async function startServer() {
@@ -517,7 +482,8 @@ async function startServer() {
       debugServer('Failed to persist startup dependency status:', e.message || e);
     }
 
-    app.use("/bulk", temporalRoutes(temporalClient, config));
+    // Mount temporal routes and provide SSE/progress helpers to the router
+    app.use("/bulk", temporalRoutes(temporalClient, config, { sendSSEEvent, persistProgress }));
 
     
 

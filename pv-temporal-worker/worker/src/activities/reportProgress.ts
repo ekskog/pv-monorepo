@@ -1,7 +1,6 @@
 import type { BatchProgressState } from '../workflows/image-batch-workflow';
 
-const PROGRESS_API_URL = process.env.PROGRESS_API_URL || process.env.PV_API_INTERNAL_URL || 'http://pv-api:3000';
-const INTERNAL_TOKEN = process.env.INTERNAL_PROGRESS_TOKEN;
+const PROGRESS_API_URL = 'http://pv-api-service:3000';
 
 export async function reportProgress(progress: BatchProgressState | any): Promise<void> {
   const url = `${PROGRESS_API_URL.replace(/\/$/, '')}/internal/bulk/progress`;
@@ -20,7 +19,6 @@ export async function reportProgress(progress: BatchProgressState | any): Promis
   };
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (INTERNAL_TOKEN) headers['x-internal-token'] = INTERNAL_TOKEN;
 
   // Use global fetch available in Node 18+ via globalThis.
   const _fetch = (globalThis as any).fetch;

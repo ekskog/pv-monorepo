@@ -14,7 +14,7 @@ const MetadataService = require("../services/metadata-service");
 // Use memory storage to handle the manual write to NFS
 const upload = multer({ storage: multer.memoryStorage() });
 
-module.exports = (temporalClient, config) => {
+module.exports = (temporalClient, config, { sendSSEEvent, persistProgress } = {}) => {
     const metadataService = new MetadataService(null);
 
     const toIsoStringOrNull = (value) => {
@@ -108,6 +108,44 @@ module.exports = (temporalClient, config) => {
                 debugTemporal(`[CRITICAL BACKGROUND FAILURE] Batch ${batchId}:`, error);
             }
         });
+    });
+
+    /**
+     * Internal endpoint for workers to report aggregated progress snapshots.
+     * POST /internal/bulk/progress
+     */
+    router.post('/internal/bulk/progress', (req, res) => {
+        try {
+            const body = req.body || {};
+            const jobId = body.workflowId || body.batchId;
+            if (!jobId) return res.status(400).json({ success: false, message: 'Missing workflowId/batchId' });
+
+            if (typeof sendSSEEvent === 'function') {
+                sendSSEEvent(jobId, 'progress', {
+                    status: body.state || 'processing',
+                    message: body.message || null,
+                    progress: {
+                        current: body.processed || null,
+                        total: body.totalRequested || null,
+                        percentage: body.percentage || null,
+                        lastUploaded: body.lastFile || null,
+                        uploaded: body.successful || null,
+                        failed: body.failed || null,
+                    },
+                    timestamp: body.timestamp || new Date().toISOString(),
+                });
+            }
+
+            // Persist if helper provided
+            if (typeof persistProgress === 'function') {
+                persistProgress(jobId, { progress: body });
+            }
+
+            return res.json({ success: true });
+        } catch (err) {
+            debugBulkApi('[internal/bulk/progress] Error handling internal progress:', err.message || err);
+            return res.status(500).json({ success: false, message: 'Internal server error' });
+        }
     });
 
     /**

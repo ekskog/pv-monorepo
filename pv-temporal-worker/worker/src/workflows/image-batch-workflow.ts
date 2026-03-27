@@ -160,12 +160,10 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
       progressState.lastSuccessFile = image.filename;
       progressState.message = `Processing images (${progressState.processed} of ${progressState.totalRequested} done)`;
 
-      // Throttled reporting: only report every 5 processed items or on completion
+      // Report progress for every successful image
       try {
-        if (progressState.processed % 5 === 0 || progressState.percentage === 100) {
-          await reportProgress({ ...progressState, batchId });
-          lastReportedPercent = progressState.percentage;
-        }
+        await reportProgress({ ...progressState, batchId });
+        lastReportedPercent = progressState.percentage;
       } catch (e) {
         // ignore reporting errors
       }

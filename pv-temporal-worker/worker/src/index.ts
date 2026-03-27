@@ -27,7 +27,7 @@ async function run() {
     connection,
     namespace: TEMPORAL_NAMESPACE,
     taskQueue: TASK_QUEUE,
-    workflowsPath: require.resolve('./workflows/image-batch-workflow'),
+    workflowsPath: process.env.WORKFLOWS_BUNDLE_PATH || require.resolve('./workflows/image-batch-workflow'),
     activities: {
       ...convertActivities,
       ...metadataActivities,

@@ -1,37 +1,39 @@
-FROM node:22-slim
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Set environment to avoid debconf warnings
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-    
-# Install necessary system dependencies for Temporal native bindings
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install CA certs
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
+# Copy package files and install (dev deps for build)
 COPY package*.json ./
-
-# Install dependencies (including dev for build)
 RUN npm ci
 
-# Copy source code
+# Copy source and build
 COPY tsconfig.json ./
 COPY src ./src
-
-# Build TypeScript
 RUN npm run build
 
-# Remove dev dependencies
-RUN npm prune --production
+# Bundle workflows at build time to avoid runtime bundling noise
+# This produces dist/workflows.bundle.js and avoids webpack output at startup.
+RUN npx @temporalio/worker bundle -o dist/workflows.bundle.js dist/workflows/image-batch-workflow.js || true
 
-# Clean up source files
-RUN rm -rf src tsconfig.json
+FROM node:22-slim AS runtime
+WORKDIR /app
 
-# Run the worker
+# Minimal runtime deps
+COPY package*.json ./
+RUN npm ci --production
+
+# Copy built app and production node_modules from builder
+COPY --from=builder /app/dist ./dist
+
+# Set production env to reduce log verbosity
+ENV NODE_ENV=production
+
+# If the build created a pre-bundled workflows file, prefer that path.
+ENV WORKFLOWS_BUNDLE_PATH=/app/dist/workflows.bundle.js
+
 CMD ["node", "dist/index.js"]

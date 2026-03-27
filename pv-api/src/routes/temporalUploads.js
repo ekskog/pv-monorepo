@@ -3,7 +3,7 @@ const router = express.Router();
 
 const debug = require("debug");
 const debugTemporal = debug("pv:server:temporal");
-const debugBBulkApi = debug("pv:server:bulk");
+const debugBulkApi = debug("pv:server:bulk");
 
 const multer = require("multer");
 const { nanoid } = require("nanoid");

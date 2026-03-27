@@ -3,7 +3,7 @@ const router = express.Router();
 
 const debug = require("debug");
 const debugTemporal = debug("pv:server:temporal");
-const debugBulkApi = debug("pv:server:bulk");
+const debugBBulkApi = debug("pv:server:bulk");
 
 const multer = require("multer");
 const { nanoid } = require("nanoid");
@@ -75,7 +75,7 @@ module.exports = (temporalClient, config) => {
                     })
                 );
 
-                debugBulkApi(`[Background] Files staged for batch ${batchId} at ${batchDir}`);
+                debugBBulkApi(`[Background] Files staged for batch ${batchId} at ${batchDir}`);
 
                 // 4. Trigger Temporal
                 // Verify client exists before calling
@@ -120,17 +120,17 @@ module.exports = (temporalClient, config) => {
         try {
             const requestStartedAt = Date.now();
             const workflowId = req.params.workflowId;
-            debugBulkApi(`[status] Request started for workflowId=${workflowId}`);
+            debugBBulkApi(`[status] Request started for workflowId=${workflowId}`);
             const handle = temporalClient.workflow.getHandle(workflowId);
-            debugBulkApi(`[status] Calling describe() for workflowId=${workflowId}`);
+            debugBBulkApi(`[status] Calling describe() for workflowId=${workflowId}`);
             const description = await handle.describe();
-            debugBulkApi(
+            debugBBulkApi(
                 `[status] describe() completed for workflowId=${workflowId} in ${Date.now() - requestStartedAt}ms`
             );
             try {
-                debugBulkApi('[status] describe result for', workflowId, description);
+                debugBBulkApi('[status] describe result for', workflowId, description);
             } catch (dbgErr) {
-                debugBulkApi('[status] describe result (stringified) for', workflowId, JSON.stringify(description));
+                debugBBulkApi('[status] describe result (stringified) for', workflowId, JSON.stringify(description));
             }
 
             const status = description.status.name;
@@ -146,9 +146,9 @@ module.exports = (temporalClient, config) => {
             try {
                 const progress = await handle.query('getProgress');
                 try {
-                    debugBulkApi('[status] getProgress result for', workflowId, progress);
+                    debugBBulkApi('[status] getProgress result for', workflowId, progress);
                 } catch (dbgErr) {
-                    debugBulkApi('[status] getProgress result (stringified) for', workflowId, JSON.stringify(progress));
+                    debugBBulkApi('[status] getProgress result (stringified) for', workflowId, JSON.stringify(progress));
                 }
                 if (progress) {
                     response.progress = {
@@ -170,24 +170,24 @@ module.exports = (temporalClient, config) => {
                     };
                 }
             } catch (qErr) {
-                debugBulkApi(`[status] getProgress query failed for workflowId=${workflowId}: ${qErr?.message || qErr}`);
+                debugBBulkApi(`[status] getProgress query failed for workflowId=${workflowId}: ${qErr?.message || qErr}`);
                 // don't fail the status call if the progress query isn't available
             }
 
             // Return payload for closed workflows without blocking running ones.
             if (status === 'COMPLETED') {
                 const resultStartedAt = Date.now();
-                debugBulkApi(`[status] Calling result() for completed workflowId=${workflowId}`);
+                debugBBulkApi(`[status] Calling result() for completed workflowId=${workflowId}`);
                 response.result = await handle.result();
-                debugBulkApi(
+                debugBBulkApi(
                     `[status] result() completed for workflowId=${workflowId} in ${Date.now() - resultStartedAt}ms`
                 );
             } else if (['FAILED', 'TIMED_OUT', 'TERMINATED', 'CANCELED', 'CANCELLED'].includes(status)) {
                 try {
                     const resultStartedAt = Date.now();
-                    debugBulkApi(`[status] Calling result() for terminal workflowId=${workflowId}, status=${status}`);
+                    debugBBulkApi(`[status] Calling result() for terminal workflowId=${workflowId}, status=${status}`);
                     await handle.result();
-                    debugBulkApi(
+                    debugBBulkApi(
                         `[status] result() unexpectedly resolved for terminal workflowId=${workflowId} in ${Date.now() - resultStartedAt}ms`
                     );
                 } catch (resultError) {
@@ -198,12 +198,12 @@ module.exports = (temporalClient, config) => {
                 }
             }
 
-            debugBulkApi(
+            debugBBulkApi(
                 `[status] Responding for workflowId=${workflowId}, status=${status}, totalDurationMs=${Date.now() - requestStartedAt}`
             );
             res.json(response);
         } catch (err) {
-            debugBulkApi(`[status] Failed for workflowId=${req.params.workflowId}: ${err.message}`);
+            debugBBulkApi(`[status] Failed for workflowId=${req.params.workflowId}: ${err.message}`);
             res.status(404).json({ error: "Workflow not found", message: err.message });
         }
     });
@@ -221,7 +221,7 @@ module.exports = (temporalClient, config) => {
         }
 
         const requestStartedAt = Date.now();
-        debugBulkApi(
+        debugBBulkApi(
             `[jobs] Request started with query=${JSON.stringify(req.query || {})}`
         );
 
@@ -249,16 +249,14 @@ module.exports = (temporalClient, config) => {
             let matched = 0;
             let lastProgressLogAt = Date.now();
 
-            debugBulkApi(
-                `[jobs] Starting Temporal visibility scan (limit=${limit}, from=${fromIso || 'none'}, to=${toIso || 'none'})`
-            );
+            // debugBBulkApi(`[jobs] Starting Temporal visibility scan (limit=${limit}, from=${fromIso || 'none'}, to=${toIso || 'none'})`);
 
             // Iterate visibility results and filter to bulk jobs by workflow id prefix.
             for await (const execution of temporalClient.workflow.list()) {
                 scanned += 1;
 
                 if (Date.now() - lastProgressLogAt >= 5000) {
-                    debugBulkApi(
+                    debugBBulkApi(
                         `[jobs] Scan progress: scanned=${scanned}, matched=${matched}, collected=${jobs.length}, elapsedMs=${Date.now() - requestStartedAt}`
                     );
                     lastProgressLogAt = Date.now();
@@ -294,7 +292,7 @@ module.exports = (temporalClient, config) => {
                 });
 
                 if (jobs.length >= limit) {
-                    debugBulkApi(
+                    debugBBulkApi(
                         `[jobs] Reached limit=${limit} after scanned=${scanned}, matched=${matched}, elapsedMs=${Date.now() - requestStartedAt}`
                     );
                     break;
@@ -307,7 +305,7 @@ module.exports = (temporalClient, config) => {
                 return bTime - aTime;
             });
 
-            debugBulkApi(
+            debugBBulkApi(
                 `[jobs] Responding success: scanned=${scanned}, matched=${matched}, returned=${jobs.length}, totalDurationMs=${Date.now() - requestStartedAt}`
             );
 
@@ -322,7 +320,7 @@ module.exports = (temporalClient, config) => {
             });
         } catch (error) {
             console.error('[Bulk jobs] Failed to list workflows:', error);
-            debugBulkApi(
+            debugBBulkApi(
                 `[jobs] Failed after elapsedMs=${Date.now() - requestStartedAt}: ${error?.message || String(error)}`
             );
             return res.status(500).json({
@@ -343,11 +341,23 @@ module.exports = (temporalClient, config) => {
         }
         try {
             const { workflowId } = req.params;
+            debugBBulkApi(`[progress] Request started for workflowId=${workflowId}`);
             const handle = temporalClient.workflow.getHandle(workflowId);
+            debugBBulkApi(`[progress] Calling describe() and getProgress() for workflowId=${workflowId}`);
             const [description, progress] = await Promise.all([
                 handle.describe(),
                 handle.query('getProgress'),
             ]);
+            try {
+                debugBBulkApi('[progress] describe result for', workflowId, description);
+            } catch (dErr) {
+                debugBBulkApi('[progress] describe (stringified) for', workflowId, JSON.stringify(description));
+            }
+            try {
+                debugBBulkApi('[progress] getProgress result for', workflowId, progress);
+            } catch (pErr) {
+                debugBBulkApi('[progress] getProgress (stringified) for', workflowId, JSON.stringify(progress));
+            }
             const batchId = workflowId.replace(/^batch-/, '');
             return res.json({
                 workflowId,
@@ -371,7 +381,7 @@ module.exports = (temporalClient, config) => {
                 },
             });
         } catch (err) {
-            debugBulkApi(`[progress] Failed for workflowId=${req.params.workflowId}: ${err.message}`);
+            debugBBulkApi(`[progress] Failed for workflowId=${req.params.workflowId}: ${err.message}`);
             if (err.message?.includes('not found') || err.name === 'WorkflowNotFoundError') {
                 return res.status(404).json({ error: 'Workflow not found', message: err.message });
             }

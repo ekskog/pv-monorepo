@@ -58,7 +58,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 
 const props = defineProps({
   job: {
@@ -67,7 +67,143 @@ const props = defineProps({
   },
 });
 
-const progress = computed(() => props.job.progress || {});
+const progressProp = computed(() => props.job.progress || {});
+const localProgress = ref({});
+const localMeta = ref({});
+const polling = ref(null);
+let eventSource = null;
+
+// SSE should only be used for non-bulk (legacy) uploads. Bulk uploads use Temporal polling.
+const useSSE = () => Boolean(props.job.jobId && props.job.kind !== 'bulk' && !props.job.workflowId);
+
+const normalizeProgress = (raw) => {
+  if (!raw) return {};
+  // If temporal shape
+  if (raw.totalRequested !== undefined || raw.percentage !== undefined) {
+    return {
+      percentage: raw.percentage ?? 0,
+      total: raw.totalRequested ?? raw.total,
+      current: raw.processed ?? raw.current,
+      uploaded: raw.successful ?? raw.uploaded,
+      failed: raw.failed ?? 0,
+      startedAt: raw.startedAt || raw.startedAt,
+      updatedAt: raw.updatedAt || raw.updatedAt,
+      completedAt: raw.completedAt || raw.completedAt,
+      lastSuccessFile: raw.lastSuccessFile,
+      lastFailedFile: raw.lastFailedFile,
+      error: raw.error,
+      // keep raw for debugging
+      _raw: raw,
+    };
+  }
+  // SSE/legacy shape (current/total)
+  if (raw.current !== undefined || raw.total !== undefined) {
+    return {
+      percentage: raw.percentage ?? (raw.total ? Math.round((raw.current / raw.total) * 100) : 0),
+      total: raw.total,
+      current: raw.current,
+      uploaded: raw.uploaded ?? raw.current,
+      failed: raw.failed ?? 0,
+      lastUploaded: raw.lastUploaded || raw.lastUploaded,
+      lastFailed: raw.lastFailed || raw.lastFailed,
+      _raw: raw,
+    };
+  }
+  return raw;
+};
+
+const setLocalProgressFromApi = (apiResp) => {
+  if (!apiResp) return;
+  // apiResp may be full response { progress, meta, status }
+  if (apiResp.progress || apiResp.meta) {
+    localProgress.value = normalizeProgress(apiResp.progress || apiResp);
+    localMeta.value = apiResp.meta || {};
+  } else {
+    localProgress.value = normalizeProgress(apiResp);
+  }
+};
+
+const startSSE = (jobId) => {
+  try {
+    eventSource = new EventSource(`/processing-status/${jobId}`);
+    eventSource.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data || '{}');
+        if (data && data.progress) {
+          localProgress.value = normalizeProgress(data.progress);
+          localMeta.value.updatedAt = data.timestamp || new Date().toISOString();
+        }
+      } catch (err) {
+        // ignore parse errors
+      }
+    };
+    eventSource.onerror = () => {
+      // close on error
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+    };
+  } catch (err) {
+    // fallback: do nothing
+  }
+};
+
+const stopSSE = () => {
+  if (eventSource) {
+    try { eventSource.close(); } catch (e) {}
+    eventSource = null;
+  }
+};
+
+const startPolling = (workflowId) => {
+  if (polling.value) return;
+  const fetchOnce = async () => {
+    try {
+      const res = await fetch(`/bulk/progress/${encodeURIComponent(workflowId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      // expected { progress, meta, status }
+      setLocalProgressFromApi(data.progress ? data : data);
+      // If workflow status indicates terminal, stop polling
+      const status = data.status || (data.meta && data.meta.status) || props.job.status;
+      if (status === 'COMPLETED' || ['FAILED','TIMED_OUT','TERMINATED','CANCELED','CANCELLED'].includes(status)) {
+        stopPolling();
+      }
+    } catch (err) {
+      // ignore transient fetch errors
+    }
+  };
+  // initial
+  fetchOnce();
+  polling.value = setInterval(fetchOnce, 2000);
+};
+
+const stopPolling = () => {
+  if (polling.value) {
+    clearInterval(polling.value);
+    polling.value = null;
+  }
+};
+
+onMounted(() => {
+  // kick off monitoring based on identifiers
+  if (useSSE()) {
+    startSSE(props.job.jobId);
+  } else if (props.job.workflowId) {
+    startPolling(props.job.workflowId);
+  } else if (props.job.batchId) {
+    // try workflowId prefix first
+    startPolling(`batch-${props.job.batchId}`);
+  }
+});
+
+onUnmounted(() => {
+  stopPolling();
+  stopSSE();
+});
+
+const progress = computed(() => Object.keys(localProgress.value).length ? localProgress.value : progressProp.value || {});
 
 const percentage = computed(() => {
   const numeric = Number(progress.value.percentage ?? 0);
@@ -131,11 +267,13 @@ const progressBarClass = computed(() => {
 
 const stats = computed(() => {
   const items = [];
-  if (progress.value.total) {
-    items.push({ label: 'Processed', value: `${progress.value.current || 0} / ${progress.value.total}` });
+  if (progress.value.total !== undefined) {
+    items.push({ label: 'Processed', value: `${progress.value.current ?? 0} / ${progress.value.total ?? 0}` });
+  } else if (progressProp.value.total) {
+    items.push({ label: 'Processed', value: `${progressProp.value.current ?? 0} / ${progressProp.value.total ?? 0}` });
   }
-  if (progress.value.uploaded || props.job.status === 'COMPLETED') {
-    items.push({ label: 'Uploaded', value: progress.value.uploaded ?? 0 });
+  if (progress.value.uploaded !== undefined || props.job.status === 'COMPLETED') {
+    items.push({ label: 'Uploaded', value: progress.value.uploaded ?? progressProp.value.uploaded ?? 0 });
   }
   if (progress.value.failed) {
     items.push({ label: 'Failed', value: progress.value.failed });

@@ -364,26 +364,9 @@ app.get("/processing-status/:jobId", (req, res) => {
   });
 });
 
-/**
- * Lightweight progress polling endpoint for UI
- * GET /bulk/progress/:batchId
- * returns { success: true, batchId, progress }
- */
-app.get('/bulk/progress/:batchId', (req, res) => {
-  const batchId = req.params.batchId;
-  try {
-    // If no progress is available yet, return success with null progress
-    if (!progressStore.has(batchId)) {
-      return res.json({ success: true, batchId, progress: null });
-    }
-
-    const progress = progressStore.get(batchId);
-    return res.json({ success: true, batchId, progress });
-  } catch (error) {
-    console.error('[Progress] Error fetching progress for', batchId, error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch progress' });
-  }
-});
+// NOTE: legacy polling route for in-memory progress store is registered later,
+// after Temporal routes are mounted, so Temporal's `/bulk/progress/:workflowId`
+// can be matched first when available.
 
 // Start server with database initialization
 async function startServer() {
@@ -478,6 +461,25 @@ async function startServer() {
     }
 
     app.use("/bulk", temporalRoutes(temporalClient, config));
+
+    // Re-register legacy polling endpoint AFTER Temporal routes so the
+    // Temporal `/bulk/progress/:workflowId` handler is matched first.
+    app.get('/bulk/progress/:batchId', (req, res) => {
+      const batchId = req.params.batchId;
+      try {
+        // If no progress is available yet, return success with null progress
+        if (!progressStore.has(batchId)) {
+          return res.json({ success: true, batchId, progress: null });
+        }
+
+        const progress = progressStore.get(batchId);
+        return res.json({ success: true, batchId, progress });
+      } catch (error) {
+        console.error('[Progress] Error fetching progress for', batchId, error.message);
+        return res.status(500).json({ success: false, message: 'Failed to fetch progress' });
+      }
+    });
+
     app.use("/", healthRoutes(minioClient, temporalClient));
 
     //debugServer(`[server.js] Database initialized successfully`);

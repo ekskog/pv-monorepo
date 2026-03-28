@@ -114,6 +114,7 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress } = {}
      * Internal endpoint for workers to report aggregated progress snapshots.
      */
     router.post('/progress', (req, res) => {
+    debugBulkApi('[internal/progress] Received progress from worker:', JSON.stringify(req.body));
 
         try {
             const body = req.body || {};
@@ -121,6 +122,7 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress } = {}
             if (!jobId) return res.status(400).json({ success: false, message: 'Missing workflowId/batchId' });
 
             if (typeof sendSSEEvent === 'function') {
+                debugBulkApi('[internal/progress] Sending SSE event for jobId:', jobId);
                 sendSSEEvent(jobId, 'progress', {
                     status: body.state || 'processing',
                     message: body.message || null,

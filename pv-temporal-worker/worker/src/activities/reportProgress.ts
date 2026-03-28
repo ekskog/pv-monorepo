@@ -2,8 +2,9 @@ import type { BatchProgressState } from '../workflows/image-batch-workflow';
 
 const PROGRESS_API_URL = 'http://pv-api-service';
 
+
 export async function reportProgress(progress: BatchProgressState | any): Promise<void> {
-  const url = `${PROGRESS_API_URL.replace(/\/$/, '')}/internal/bulk/progress`;
+  const url = `${PROGRESS_API_URL.replace(/\/$/, '')}/bulk/progress`;
   const body = {
     workflowId: (progress && progress.batchId) || progress.workflowId || undefined,
     batchId: progress.batchId || undefined,

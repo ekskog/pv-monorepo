@@ -75,7 +75,9 @@ try {
     secretKey: config.minio.secretKey,
   });
 } catch (err) {
-  debugServer(`[server.js LINE 39]: MinIO client initialization error: ${err.message}`);
+  debugServer(
+    `[server.js LINE 39]: MinIO client initialization error: ${err.message}`,
+  );
   minioClient = null;
 }
 const UploadService = require("./services/upload-service");
@@ -94,8 +96,9 @@ const temporalRoutes = require("./routes/temporalUploads"); // Added this for th
 const pendingJobs = new Map();
 
 // SSE functionality moved to a dedicated service
-const sseService = require('./services/sse-service');
-const { attachSseRoutes, sendSSEEvent, persistProgress, getProgress } = sseService;
+const sseService = require("./services/sse-service");
+const { attachSseRoutes, sendSSEEvent, persistProgress, getProgress } =
+  sseService;
 
 // Background processing function for asynchronous uploads with SSE updates
 async function processFilesInBackground(
@@ -103,9 +106,11 @@ async function processFilesInBackground(
   bucketName,
   folderPath,
   startTime,
-  jobId
+  jobId,
 ) {
-  debugUpload(`[server.js (110)] Starting background processing for job ${jobId} with ${files.length} files`);
+  debugUpload(
+    `[server.js (110)] Starting background processing for job ${jobId} with ${files.length} files`,
+  );
 
   try {
     const uploadResults = [];
@@ -127,14 +132,16 @@ async function processFilesInBackground(
 
     for (let i = 0; i < totalFiles; i++) {
       const file = files[i];
-      debugServer(`Processing file ${i + 1}/${totalFiles}: ${file.originalname}`);
+      debugServer(
+        `Processing file ${i + 1}/${totalFiles}: ${file.originalname}`,
+      );
       try {
         // Process the individual file
         const result = await uploadService.processAndUploadFile(
           file,
           bucketName,
           folderPath,
-          file.originalname
+          file.originalname,
         );
         uploadResults.push(result);
         debugServer(`Successfully processed: ${file.originalname}`);
@@ -153,9 +160,10 @@ async function processFilesInBackground(
             failed: errors.length,
           },
         });
-
       } catch (error) {
-        debugUpload(`[server.js (160)] Error processing file ${file.originalname}: ${error.message}`);
+        debugUpload(
+          `[server.js (160)] Error processing file ${file.originalname}: ${error.message}`,
+        );
         errors.push({
           filename: file.originalname,
           error: error.message,
@@ -178,18 +186,24 @@ async function processFilesInBackground(
       }
 
       // Small delay to ensure event ordering and prevent overwhelming the client
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
     const processingTime = Date.now() - startTime;
-    debugUpload(`[server.js (148)] Processing completed in ${processingTime}ms. Success: ${uploadResults.length}, Failed: ${errors.length}`);
+    debugUpload(
+      `[server.js (148)] Processing completed in ${processingTime}ms. Success: ${uploadResults.length}, Failed: ${errors.length}`,
+    );
 
     // Update database
     try {
       await database.incrementFileCounter(uploadResults.length, folderPath);
-      debugUpload(`[server.js (152)] Updated file counter for ${folderPath} by ${uploadResults.length}`);
+      debugUpload(
+        `[server.js (152)] Updated file counter for ${folderPath} by ${uploadResults.length}`,
+      );
     } catch (dbError) {
-      debugUpload(`[server.js (154)] Error updating file counter: ${dbError.message}`);
+      debugUpload(
+        `[server.js (154)] Error updating file counter: ${dbError.message}`,
+      );
     }
 
     // Determine final status and send completion event
@@ -217,16 +231,22 @@ async function processFilesInBackground(
       errors: errors.length > 0 ? errors : undefined,
     });
 
-    debugUpload(`[server.js (173)] Sent completion event for job ${jobId}, status: ${finalStatus}`);
+    debugUpload(
+      `[server.js (173)] Sent completion event for job ${jobId}, status: ${finalStatus}`,
+    );
 
     // Schedule connection cleanup - give client time to receive the completion event
     setTimeout(() => {
-      debugSSE(`[server.js (177)] Cleaning up SSE connections for job ${jobId}`);
+      debugSSE(
+        `[server.js (177)] Cleaning up SSE connections for job ${jobId}`,
+      );
     }, 10000); // Reduced from 5 minutes to 10 seconds since job is complete
-
   } catch (error) {
     const errorTime = Date.now() - startTime;
-    debugUpload(`[server.js (182)] Background processing failed after ${errorTime}ms:`, error.message);
+    debugUpload(
+      `[server.js (182)] Background processing failed after ${errorTime}ms:`,
+      error.message,
+    );
 
     // Send error completion message
     sendSSEEvent(jobId, "complete", {
@@ -243,40 +263,31 @@ async function processFilesInBackground(
 
     // Clean up connections after error
     setTimeout(() => {
-      debugSSE(`[server.js (196)] Cleaning up SSE connections after error for job ${jobId}`);
+      debugSSE(
+        `[server.js (196)] Cleaning up SSE connections after error for job ${jobId}`,
+      );
     }, 5000);
   }
 }
 
 // SSE endpoint - for monitoring upload progress
 // Attach SSE routes (processing-status) and wire up pending-job starter
-attachSseRoutes(app, { pendingJobs, onStartPendingJob: (files, bucketName, folderPath, startTime, jobId) => {
-  processFilesInBackground(files, bucketName, folderPath, startTime, jobId).catch((error) => {
-    debugSSE(`[server.js] Error starting background processing for job ${jobId}: ${error.message}`);
-  });
-} });
-
-/**
- * Lightweight progress polling endpoint for UI
- * GET /bulk/progress/:batchId
- * returns { success: true, batchId, progress }
- */
-app.get('/bulk/progress/:batchId', (req, res) => {
-  const batchId = req.params.batchId;
-  try {
-    // If no progress is available yet, return success with null progress
-    const progress = getProgress(batchId);
-    return res.json({ success: true, batchId, progress });
-  } catch (error) {
-    console.error('[Progress] Error fetching progress for', batchId, error.message);
-    return res.status(500).json({ success: false, message: 'Failed to fetch progress' });
-  }
+attachSseRoutes(app, {
+  pendingJobs,
+  onStartPendingJob: (files, bucketName, folderPath, startTime, jobId) => {
+    processFilesInBackground(
+      files,
+      bucketName,
+      folderPath,
+      startTime,
+      jobId,
+    ).catch((error) => {
+      debugSSE(
+        `[server.js] Error starting background processing for job ${jobId}: ${error.message}`,
+      );
+    });
+  },
 });
-
-// Internal progress endpoint moved to the temporalUploads router
-// (pv-api/src/routes/temporalUploads.js) which is mounted at `/bulk`.
-// POST /bulk/internal/bulk/progress is handled there and receives
-// progress snapshots from workers.
 
 // Start server with database initialization
 async function startServer() {
@@ -287,7 +298,10 @@ async function startServer() {
 
     // Warm the Temporal gRPC channel to avoid cold-start timeouts in health checks
     try {
-      if (healthRoutes && typeof healthRoutes.warmTemporalChannel === "function") {
+      if (
+        healthRoutes &&
+        typeof healthRoutes.warmTemporalChannel === "function"
+      ) {
         healthRoutes.warmTemporalChannel(temporalClient);
       }
     } catch (err) {
@@ -304,12 +318,22 @@ async function startServer() {
         if (minioClient) {
           await Promise.race([
             minioClient.bucketExists(config.minio.bucketName),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("timeout")), 3000),
+            ),
           ]);
+
+          // mount routes that depend on MinIO only if the bucket is accessible
+          app.use(
+            "/",
+            albumRoutes(minioClient, { pendingJobs, processFilesInBackground }),
+          );
+          app.use("/", statRoutes(minioClient));
+
           results.minio = true;
         }
       } catch (e) {
-        debugServer('Dependency check: MinIO failed:', e.message || e);
+        debugServer("Dependency check: MinIO failed:", e.message || e);
       }
 
       // Database
@@ -317,7 +341,7 @@ async function startServer() {
       try {
         results.database = Boolean(await database.isHealthy());
       } catch (e) {
-        debugServer('Dependency check: Database failed:', e.message || e);
+        debugServer("Dependency check: Database failed:", e.message || e);
       }
 
       // Temporal
@@ -327,38 +351,56 @@ async function startServer() {
           const TEMPORAL_TIMEOUT_MS = 4000;
           await Promise.race([
             temporalClient.workflowService.describeNamespace({
-              namespace: config.temporal?.namespace || 'default',
+              namespace: config.temporal?.namespace || "default",
             }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error(`Temporal gRPC timeout after ${TEMPORAL_TIMEOUT_MS} ms`)), TEMPORAL_TIMEOUT_MS)),
+            new Promise((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `Temporal gRPC timeout after ${TEMPORAL_TIMEOUT_MS} ms`,
+                    ),
+                  ),
+                TEMPORAL_TIMEOUT_MS,
+              ),
+            ),
           ]);
           results.temporal = true;
         }
       } catch (e) {
-        debugServer('Dependency check: Temporal failed:', e.message || e);
+        debugServer("Dependency check: Temporal failed:", e.message || e);
       }
 
       // Converter
       results.converter = false;
       try {
         if (config.converter && config.converter.url) {
-          const timeout = Math.min(parseInt(config.converter.timeout, 10) || 4000, 4000);
+          const timeout = Math.min(
+            parseInt(config.converter.timeout, 10) || 4000,
+            4000,
+          );
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), timeout);
           try {
-            const r = await fetch(`${config.converter.url}/health`, { signal: controller.signal });
+            const r = await fetch(`${config.converter.url}/health`, {
+              signal: controller.signal,
+            });
             results.converter = Boolean(r && r.ok);
           } finally {
             clearTimeout(timer);
           }
         }
       } catch (e) {
-        debugServer('Dependency check: Converter failed:', e.message || e);
+        debugServer("Dependency check: Converter failed:", e.message || e);
       }
 
       // Log a compact status summary
-      debugServer('Dependency status at startup: ', results);
+      debugServer("Dependency status at startup: ", results);
       return results;
     }
+
+    app.use("/auth", authRoutes);
+    app.use("/user", userRoutes);
 
     const deps = await checkAllDependencies();
     try {
@@ -367,13 +409,11 @@ async function startServer() {
         dependencyStatus.set(deps);
       }
     } catch (e) {
-      debugServer('Failed to persist startup dependency status:', e.message || e);
+      debugServer(
+        "Failed to persist startup dependency status:",
+        e.message || e,
+      );
     }
-
-    // Mount temporal routes and provide SSE/progress helpers to the router
-    app.use("/bulk", temporalRoutes(temporalClient, config, { sendSSEEvent, persistProgress }));
-
-    
 
     app.use("/", healthRoutes(minioClient, temporalClient));
 
@@ -384,7 +424,6 @@ async function startServer() {
       const k8sNamespace = config.kubernetes.namespace || "pv";
       debugServer(`Starting pv ${new Date()}...`);
       debugServer(`> pv API server running on port ${config.server.port}`);
-
     });
   } catch (error) {
     //debugServer(`[server.js] Failed to start server:`, error.message);
@@ -400,13 +439,6 @@ process.on("SIGINT", async () => {
   }
   process.exit(0);
 });
-
-// Mount route modules with dependency injection
-app.use("/auth", authRoutes);
-app.use("/user", userRoutes);
-// In server.js
-app.use("/", albumRoutes(minioClient, { pendingJobs, processFilesInBackground })); // Pass processFilesInBackground and pendingJobs
-app.use("/", statRoutes(minioClient));
 
 async function initializeDatabase() {
   try {

@@ -92,7 +92,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     throw new Error(`Missing albumName/folder for batch ${batchId}`);
   }
 
-  // log.info(`Starting batch ${batchId} with ${images.length} images, album: ${albumName}`);
+  log.info('processBatchImages: start', { batchId, imageCount: images.length, albumName });
 
   let lastReportedPercent = -1;
 
@@ -100,13 +100,20 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     images.map(async (image: ImageFile) => {
       const objectName = predictObjectName(albumName, image.filename);
 
-      // log.info(`Processing ${image.filename} -> ${objectName}`);
+      log.info('image: dispatching activities', { batchId, filename: image.filename, objectName });
 
       // Run conversion and metadata extraction in parallel
       const [conversionResult, metadataResult] = await Promise.allSettled([
         convertImage(image, objectName),
         extractAndPersistMetadata(image.path, image.filename, objectName),
       ]);
+
+      log.info('image: activities settled', {
+        batchId,
+        filename: image.filename,
+        conversionStatus: conversionResult.status,
+        metadataStatus: metadataResult.status,
+      });
 
       const conversionFailed = conversionResult.status === 'rejected';
       const metadataFailed   = metadataResult.status   === 'rejected';
@@ -116,7 +123,14 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
         if (conversionFailed) errors.push(`Conversion: ${conversionResult.reason}`);
         if (metadataFailed)   errors.push(`Metadata: ${metadataResult.reason}`);
 
-        // log.error(`✗ ${image.filename} failed: ${errors.join(' | ')}`);
+        log.error('image: one or more activities failed', {
+          batchId,
+          filename: image.filename,
+          conversionFailed,
+          metadataFailed,
+          conversionError: conversionFailed ? String(conversionResult.reason) : null,
+          metadataError: metadataFailed ? String(metadataResult.reason) : null,
+        });
 
         // Update progress state incrementally on failure
         progressState.failed++;
@@ -133,11 +147,18 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
         try {
           if (progressState.processed % 5 === 0 || progressState.percentage === 100) {
             // include batchId to help the API map to workflow/job id
+            log.info('reportProgress: calling (failure path)', { batchId, percentage: progressState.percentage });
             await reportProgress({ ...progressState, batchId });
+            log.info('reportProgress: done (failure path)', { batchId, percentage: progressState.percentage });
             lastReportedPercent = progressState.percentage;
           }
         } catch (e) {
-          // swallow reporting errors
+          log.error('reportProgress: failed (failure path)', {
+            batchId,
+            percentage: progressState.percentage,
+            error: e instanceof Error ? e.message : String(e),
+            cause: (e as any)?.cause?.message,
+          });
         }
 
         return {
@@ -147,7 +168,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
         };
       }
 
-      // log.info(`✓ ${image.filename} fully processed`);
+      log.info('image: all activities succeeded', { batchId, filename: image.filename, objectName });
 
       // Update progress state incrementally on success
       progressState.successful++;
@@ -162,10 +183,18 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
 
       // Report progress for every successful image
       try {
+        log.info('reportProgress: calling (success path)', { batchId, filename: image.filename, percentage: progressState.percentage });
         await reportProgress({ ...progressState, batchId });
+        log.info('reportProgress: done (success path)', { batchId, filename: image.filename, percentage: progressState.percentage });
         lastReportedPercent = progressState.percentage;
       } catch (e) {
-        // ignore reporting errors
+        log.error('reportProgress: failed (success path)', {
+          batchId,
+          filename: image.filename,
+          percentage: progressState.percentage,
+          error: e instanceof Error ? e.message : String(e),
+          cause: (e as any)?.cause?.message,
+        });
       }
 
       return {
@@ -187,15 +216,32 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     progressState.error = firstFailure.error;
   }
 
-  // log.info(`Batch ${batchId} complete: ${progressState.successful} succeeded, ${progressState.failed} failed`);
+  log.info('processBatchImages: all images settled', {
+    batchId,
+    successful: progressState.successful,
+    failed: progressState.failed,
+    totalImages: progressState.totalRequested,
+  });
 
   // Cleanup NFS scratch directory regardless of individual failures
   try {
+    log.info('cleanupBatch: calling', { batchId, batchDir });
     await cleanupBatch(batchDir);
-    // log.info(`✓ Cleaned up NFS directory: ${batchDir}`);
+    log.info('cleanupBatch: done', { batchId, batchDir });
   } catch (err) {
-    // log.error(`NFS cleanup failed: ${String(err)}`);
+    log.error('cleanupBatch: failed', {
+      batchId,
+      batchDir,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
+
+  log.info('processBatchImages: complete', {
+    batchId,
+    successful: progressState.successful,
+    failed: progressState.failed,
+    processingTimeMs: Date.now() - startTime,
+  });
 
   return {
     totalImages: progressState.totalRequested,

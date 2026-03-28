@@ -112,9 +112,9 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress } = {}
 
     /**
      * Internal endpoint for workers to report aggregated progress snapshots.
-     * POST /internal/bulk/progress
      */
-    router.post('/internal/bulk/progress', (req, res) => {
+    router.post('/progress', (req, res) => {
+
         try {
             const body = req.body || {};
             const jobId = body.workflowId || body.batchId;

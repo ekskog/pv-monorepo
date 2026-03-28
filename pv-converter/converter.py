@@ -77,17 +77,15 @@ _SUBPROCESS_MEMORY_LIMIT_BYTES = 700 * 1024 * 1024  # 700 MB
 
 def _limit_subprocess_memory():
     """
-    Called in the child process (via preexec_fn) before exec.
-    Sets RLIMIT_AS so the child — and any grandchildren it spawns — cannot
-    exceed the cap. If they try, they get SIGKILL rather than taking the node.
+    Limit subprocess heap memory rather than virtual address space.
+    RLIMIT_AS counts all virtual mappings including shared libs (~1GB+ for ImageMagick)
+    which causes false OOM errors even when real RAM is plentiful.
+    RLIMIT_DATA limits only the heap/data segment — much closer to actual RAM usage.
     """
     try:
-        resource.setrlimit(
-            resource.RLIMIT_AS,
-            (_SUBPROCESS_MEMORY_LIMIT_BYTES, _SUBPROCESS_MEMORY_LIMIT_BYTES),
-        )
+        limit = 800 * 1024 * 1024  # 800MB heap limit
+        resource.setrlimit(resource.RLIMIT_DATA, (limit, limit))
     except Exception as e:
-        # Non-fatal: log and continue rather than aborting the child
         logging.warning(f"[SUBPROCESS] Could not set memory limit: {e}")
 
 
@@ -294,10 +292,10 @@ def convert_to_avif(data: bytes, file_type: str, original_filename: str) -> byte
     logging.info(f"[CONVERTER] Type: {file_type.upper()}")
     logging.info(f"[CONVERTER] Input size: {input_size}MB")
     logging.info(
-        f"[CONVERTER] Subprocess memory cap: "
-        f"{_SUBPROCESS_MEMORY_LIMIT_BYTES // (1024 * 1024)}MB"
+        f"[CONVERTER] Subprocess heap cap: "
+        f"{800}MB (RLIMIT_DATA)"
     )
-
+    
     log_memory_state("START")
 
     limits = get_memory_limit()

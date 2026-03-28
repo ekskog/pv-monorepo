@@ -116,12 +116,12 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
       });
 
       const conversionFailed = conversionResult.status === 'rejected';
-      const metadataFailed   = metadataResult.status   === 'rejected';
+      const metadataFailed = metadataResult.status === 'rejected';
 
       if (conversionFailed || metadataFailed) {
         const errors: string[] = [];
         if (conversionFailed) errors.push(`Conversion: ${conversionResult.reason}`);
-        if (metadataFailed)   errors.push(`Metadata: ${metadataResult.reason}`);
+        if (metadataFailed) errors.push(`Metadata: ${metadataResult.reason}`);
 
         log.error('image: one or more activities failed', {
           batchId,
@@ -148,7 +148,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
           if (progressState.processed % 5 === 0 || progressState.percentage === 100) {
             // include batchId to help the API map to workflow/job id
             log.info('reportProgress: calling (failure path)', { batchId, percentage: progressState.percentage });
-            await reportProgress({ ...progressState, batchId });
+            await reportProgress({ ...progressState, batchId, workflowId: `batch-${batchId}` });
             log.info('reportProgress: done (failure path)', { batchId, percentage: progressState.percentage });
             lastReportedPercent = progressState.percentage;
           }

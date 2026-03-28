@@ -6,7 +6,7 @@ metadata:
   labels:
     app: pv-avif-converter
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 1
   strategy:
     type: RollingUpdate

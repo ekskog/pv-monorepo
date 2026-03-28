@@ -62,8 +62,8 @@ function predictObjectName(albumName: string, filename: string): string {
 }
 
 /**
- * Main workflow — orchestrates parallel metadata + conversion for each image,
- * with rollback on failure.
+ * Main workflow — orchestrates sequential processing of each image,
+ * running conversion and metadata extraction in parallel per image.
  */
 export async function processBatchImages(input: BatchInput): Promise<BatchResult> {
   const startTime = Date.now();
@@ -94,125 +94,124 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
 
   log.info('processBatchImages: start', { batchId, imageCount: images.length, albumName });
 
-  let lastReportedPercent = -1;
+  // ── Sequential loop — one image fully completes before the next starts.
+  // Conversion + metadata still run in parallel for each individual image,
+  // but we never have two conversions running simultaneously.
+  const imageResults: Array
+    | { filename: string; success: true; objectName: string; conversionMetrics: any }
+    | { filename: string; success: false; error: string }
+  > = [];
 
-  const imageResults = await Promise.all(
-    images.map(async (image: ImageFile) => {
-      const objectName = predictObjectName(albumName, image.filename);
+  for (const image of images) {
+    const objectName = predictObjectName(albumName, image.filename);
 
-      log.info('image: dispatching activities', { batchId, filename: image.filename, objectName });
+    log.info('image: dispatching activities', { batchId, filename: image.filename, objectName });
 
-      // Run conversion and metadata extraction in parallel
-      const [conversionResult, metadataResult] = await Promise.allSettled([
-        convertImage(image, objectName),
-        extractAndPersistMetadata(image.path, image.filename, objectName),
-      ]);
+    // Conversion and metadata run in parallel for this single image
+    const [conversionResult, metadataResult] = await Promise.allSettled([
+      convertImage(image, objectName),
+      extractAndPersistMetadata(image.path, image.filename, objectName),
+    ]);
 
-      log.info('image: activities settled', {
+    log.info('image: activities settled', {
+      batchId,
+      filename: image.filename,
+      conversionStatus: conversionResult.status,
+      metadataStatus: metadataResult.status,
+    });
+
+    const conversionFailed = conversionResult.status === 'rejected';
+    const metadataFailed = metadataResult.status === 'rejected';
+
+    if (conversionFailed || metadataFailed) {
+      const errors: string[] = [];
+      if (conversionFailed) errors.push(`Conversion: ${conversionResult.reason}`);
+      if (metadataFailed) errors.push(`Metadata: ${metadataResult.reason}`);
+
+      log.error('image: one or more activities failed', {
         batchId,
         filename: image.filename,
-        conversionStatus: conversionResult.status,
-        metadataStatus: metadataResult.status,
+        conversionFailed,
+        metadataFailed,
+        conversionError: conversionFailed ? String(conversionResult.reason) : null,
+        metadataError: metadataFailed ? String(metadataResult.reason) : null,
       });
 
-      const conversionFailed = conversionResult.status === 'rejected';
-      const metadataFailed = metadataResult.status === 'rejected';
-
-      if (conversionFailed || metadataFailed) {
-        const errors: string[] = [];
-        if (conversionFailed) errors.push(`Conversion: ${conversionResult.reason}`);
-        if (metadataFailed) errors.push(`Metadata: ${metadataResult.reason}`);
-
-        log.error('image: one or more activities failed', {
-          batchId,
-          filename: image.filename,
-          conversionFailed,
-          metadataFailed,
-          conversionError: conversionFailed ? String(conversionResult.reason) : null,
-          metadataError: metadataFailed ? String(metadataResult.reason) : null,
-        });
-
-        // Update progress state incrementally on failure
-        progressState.failed++;
-        progressState.processed = progressState.successful + progressState.failed;
-        progressState.percentage =
-          progressState.totalRequested > 0
-            ? Math.round((progressState.processed / progressState.totalRequested) * 100)
-            : 0;
-        progressState.updatedAt = new Date().toISOString();
-        progressState.lastFailedFile = image.filename;
-        progressState.message = `Processing images (${progressState.processed} of ${progressState.totalRequested} done)`;
-
-        // Maybe report aggregated progress for the UI every N files
-        try {
-          if (progressState.processed % 5 === 0 || progressState.percentage === 100) {
-            // include batchId to help the API map to workflow/job id
-            log.info('reportProgress: calling (failure path)', { batchId, percentage: progressState.percentage });
-            await reportProgress({ ...progressState, batchId, workflowId: `batch-${batchId}` });
-            log.info('reportProgress: done (failure path)', { batchId, percentage: progressState.percentage });
-            lastReportedPercent = progressState.percentage;
-          }
-        } catch (e) {
-          log.error('reportProgress: failed (failure path)', {
-            batchId,
-            percentage: progressState.percentage,
-            error: e instanceof Error ? e.message : String(e),
-            cause: (e as any)?.cause?.message,
-          });
-        }
-
-        return {
-          filename: image.filename,
-          success: false as const,
-          error: errors.join(' | '),
-        };
-      }
-
-      log.info('image: all activities succeeded', { batchId, filename: image.filename, objectName });
-
-      // Update progress state incrementally on success
-      progressState.successful++;
+      // Update progress state incrementally on failure
+      progressState.failed++;
       progressState.processed = progressState.successful + progressState.failed;
       progressState.percentage =
         progressState.totalRequested > 0
           ? Math.round((progressState.processed / progressState.totalRequested) * 100)
           : 0;
       progressState.updatedAt = new Date().toISOString();
-      progressState.lastSuccessFile = image.filename;
+      progressState.lastFailedFile = image.filename;
       progressState.message = `Processing images (${progressState.processed} of ${progressState.totalRequested} done)`;
 
-      // Report progress for every successful image
       try {
-        log.info('reportProgress: calling (success path)', { batchId, filename: image.filename, percentage: progressState.percentage });
-        await reportProgress({ ...progressState, batchId });
-        log.info('reportProgress: done (success path)', { batchId, filename: image.filename, percentage: progressState.percentage });
-        lastReportedPercent = progressState.percentage;
+        log.info('reportProgress: calling (failure path)', { batchId, percentage: progressState.percentage });
+        await reportProgress({ ...progressState, batchId, workflowId: `batch-${batchId}` });
+        log.info('reportProgress: done (failure path)', { batchId, percentage: progressState.percentage });
       } catch (e) {
-        log.error('reportProgress: failed (success path)', {
+        log.error('reportProgress: failed (failure path)', {
           batchId,
-          filename: image.filename,
           percentage: progressState.percentage,
           error: e instanceof Error ? e.message : String(e),
           cause: (e as any)?.cause?.message,
         });
       }
 
-      return {
+      imageResults.push({
         filename: image.filename,
-        success: true as const,
-        objectName,
-        conversionMetrics: conversionResult.value.metrics,
-      };
-    })
-  );
+        success: false as const,
+        error: errors.join(' | '),
+      });
+
+      continue; // move to next image
+    }
+
+    log.info('image: all activities succeeded', { batchId, filename: image.filename, objectName });
+
+    // Update progress state incrementally on success
+    progressState.successful++;
+    progressState.processed = progressState.successful + progressState.failed;
+    progressState.percentage =
+      progressState.totalRequested > 0
+        ? Math.round((progressState.processed / progressState.totalRequested) * 100)
+        : 0;
+    progressState.updatedAt = new Date().toISOString();
+    progressState.lastSuccessFile = image.filename;
+    progressState.message = `Processing images (${progressState.processed} of ${progressState.totalRequested} done)`;
+
+    try {
+      log.info('reportProgress: calling (success path)', { batchId, filename: image.filename, percentage: progressState.percentage });
+      await reportProgress({ ...progressState, batchId, workflowId: `batch-${batchId}` });
+      log.info('reportProgress: done (success path)', { batchId, filename: image.filename, percentage: progressState.percentage });
+    } catch (e) {
+      log.error('reportProgress: failed (success path)', {
+        batchId,
+        filename: image.filename,
+        percentage: progressState.percentage,
+        error: e instanceof Error ? e.message : String(e),
+        cause: (e as any)?.cause?.message,
+      });
+    }
+
+    imageResults.push({
+      filename: image.filename,
+      success: true as const,
+      objectName,
+      conversionMetrics: (conversionResult.value as any).metrics,
+    });
+  }
 
   // Finalize terminal state
   progressState.completedAt = new Date().toISOString();
   progressState.updatedAt = progressState.completedAt;
   progressState.message = 'Batch processing completed';
-  progressState.percentage = 100; // All images have been processed
+  progressState.percentage = 100;
   const firstFailure = imageResults.find((r) => !r.success);
-  if (firstFailure) {
+  if (firstFailure && !firstFailure.success) {
     progressState.error = firstFailure.error;
   }
 

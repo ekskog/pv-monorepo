@@ -9,7 +9,7 @@ import * as reportActivities from './activities/reportProgress';
 
 // Suppress SDK info/debug logs — only WARN and above will appear in pod logs
 Runtime.install({
-  logger: new DefaultLogger('WARN'),
+  logger: new DefaultLogger('INFO'),
 });
 
 const TEMPORAL_ADDRESS = process.env.TEMPORAL_ADDRESS ||

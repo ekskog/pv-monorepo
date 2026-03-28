@@ -6,13 +6,13 @@ metadata:
   labels:
     app: pv-avif-converter
 spec:
-  replicas: 3
+  replicas: 2
   revisionHistoryLimit: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
+      maxSurge: 1        # allow an extra pod during rollout rather than going under capacity
+      maxUnavailable: 0  # never drop below 3 healthy pods during rollout
   selector:
     matchLabels:
       app: pv-avif-converter
@@ -21,10 +21,13 @@ spec:
       labels:
         app: pv-avif-converter
     spec:
+      terminationGracePeriodSeconds: 30  # give in-flight conversions time to finish
       affinity:
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
+          preferredDuringSchedulingIgnoredDuringExecution:  # preferred not required
+          - weight: 100                                     # so pods can reschedule if a node dies
+            podAffinityTerm:
+              labelSelector:
                 matchExpressions:
                   - key: app
                     operator: In
@@ -46,16 +49,29 @@ spec:
               value: "192.168.1.8:9000"
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "100m"
+              memory: "256Mi"
+              cpu: "250m"    # raised — 100m is unrealistically low for image conversion
             limits:
               memory: "1024Mi"
               cpu: "1000m"
+          startupProbe:       # gives the container time to start before liveness takes over
+            httpGet:
+              path: /health
+              port: 3000
+            failureThreshold: 12
+            periodSeconds: 5  # 60s total startup window
           livenessProbe:
             httpGet:
               path: /health
               port: 3000
             initialDelaySeconds: 30
-            periodSeconds: 1800
+            periodSeconds: 30        # was 1800 — check every 30 SECONDS not 30 MINUTES
             timeoutSeconds: 15
+            failureThreshold: 3      # dead pod detected and restarted within ~90 seconds
+          readinessProbe:            # stops traffic to a pod that's alive but overwhelmed
+            httpGet:
+              path: /health
+              port: 3000
+            periodSeconds: 10
             failureThreshold: 2
+            successThreshold: 1

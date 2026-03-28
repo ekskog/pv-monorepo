@@ -1,10 +1,16 @@
 // force worker rebuild to fix temporal connection issues 18/03/2026
+import { NativeConnection, Worker, Runtime, DefaultLogger } from '@temporalio/worker';
+import type { Configuration } from 'webpack';
 
-import { NativeConnection, Worker } from '@temporalio/worker';
 import * as convertActivities from './activities/convertImage';
 import * as metadataActivities from './activities/metadataActivity';
 import * as persistActivities from './activities/persistToMinio'; // kept for cleanupBatch
 import * as reportActivities from './activities/reportProgress';
+
+// Suppress SDK info/debug logs — only WARN and above will appear in pod logs
+Runtime.install({
+  logger: new DefaultLogger('WARN'),
+});
 
 const TEMPORAL_ADDRESS = process.env.TEMPORAL_ADDRESS ||
   'temporal-frontend.temporal.svc.cluster.local:7233';
@@ -13,21 +19,21 @@ const TASK_QUEUE = process.env.TASK_QUEUE;
 
 async function run() {
   if (!TEMPORAL_NAMESPACE) throw new Error('TEMPORAL_NAMESPACE environment variable is required');
-  if (!TASK_QUEUE)         throw new Error('TASK_QUEUE environment variable is required');
-
-  // console.log('Starting Temporal worker...');
-  // console.log(`Temporal:   ${TEMPORAL_ADDRESS}`);
-  // console.log(`Namespace:  ${TEMPORAL_NAMESPACE}`);
-  // console.log(`Task queue: ${TASK_QUEUE}`);
+  if (!TASK_QUEUE) throw new Error('TASK_QUEUE environment variable is required');
 
   const connection = await NativeConnection.connect({ address: TEMPORAL_ADDRESS });
-  // console.log('✓ Connected to Temporal');
 
   const worker = await Worker.create({
     connection,
     namespace: TEMPORAL_NAMESPACE,
     taskQueue: TASK_QUEUE,
     workflowsPath: require.resolve('./workflows/image-batch-workflow'),
+    bundlerOptions: {
+      webpackConfigHook: (config: Configuration) => {
+        config.infrastructureLogging = { level: 'error' }; // suppresses asset/module logs
+        return config;
+      },
+    },
     activities: {
       ...convertActivities,
       ...metadataActivities,
@@ -36,9 +42,8 @@ async function run() {
     },
   });
 
-  // console.log('✓ Worker ready');
-  // console.log('🚀 Listening for tasks...');
-
+  console.log('✓ Worker ready');
+  console.log('🚀 Listening for tasks...');
   await worker.run();
 }
 

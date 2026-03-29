@@ -29,63 +29,40 @@ def log_mem(context: str):
     )
 
 def convert_to_avif(input_bytes: bytes, file_type: str) -> bytes:
-    """
-    Converts HEIC/JPEG to AVIF while respecting a 1GB RAM limit.
-    """
     file_type = file_type.lower().strip('.')
-    log_mem("START_CONVERSION")
-
-    # Use /tmp (RAM disk in many containers, but safer than Python Heap)
+    
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         in_p = tmp_path / f"input.{file_type}"
         out_p = tmp_path / "output.avif"
 
-        # --- STEP 1: FLUSH RAM TO DISK ---
         in_p.write_bytes(input_bytes)
-        
-        # Explicitly delete the large bytes object and force GC
         del input_bytes
-        gc.collect() 
-        log_mem("RAM_CLEARED_BEFORE_ENCODER")
+        gc.collect()
 
         try:
-            # --- STEP 2: RUN ENCODER ---
             if file_type == "heic":
-                # Direct HEIC -> AVIF (libheif)
+                # Modern libheif command
                 cmd = ["heif-enc", "--avif", "-q", "60", "--speed", "6", str(in_p), "-o", str(out_p)]
-            elif file_type in ["jpg", "jpeg"]:
-                # JPEG -> AVIF (libavif)
-                cmd = ["avifenc", "--speed", "6", "--jobs", "1", str(in_p), str(out_p)]
             else:
-                raise ValueError(f"Unsupported format: {file_type}")
+                cmd = ["avifenc", "--speed", "6", "--jobs", "1", str(in_p), str(out_p)]
 
-            result = subprocess.run(
-                cmd, 
-                capture_output=True, 
-                text=True, 
-                preexec_fn=_set_subprocess_limits
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, preexec_fn=_set_subprocess_limits)
+
+            # FALLBACK: If the version still hates '--speed', try one more time without it
+            if result.returncode != 0 and "unrecognized option '--speed'" in result.stderr:
+                logger.warning("Falling back to basic command (no --speed flag)")
+                cmd = ["heif-enc", "--avif", "-q", "60", str(in_p), "-o", str(out_p)]
+                result = subprocess.run(cmd, capture_output=True, text=True, preexec_fn=_set_subprocess_limits)
 
             if result.returncode != 0:
-                logger.error(f"Encoder failed: {result.stderr}")
-                raise RuntimeError(f"Conversion failed: {result.stderr}")
+                raise RuntimeError(f"Encoder failed: {result.stderr}")
 
-            # --- STEP 3: READ RESULT AND CLEAN UP ---
-            if not out_p.exists():
-                raise FileNotFoundError("Output file was not created.")
-
-            output_bytes = out_p.read_bytes()
-            log_mem("RESULT_READ_INTO_RAM")
-            
-            return output_bytes
+            return out_p.read_bytes()
 
         except Exception as e:
-            logger.error(f"Conversion error: {traceback.format_exc()}")
+            logger.error(f"Conversion error: {e}")
             raise
-        finally:
-            # Final cleanup inside the function
-            gc.collect()
 
 # Example cleanup for your API Route
 def cleanup_after_request():

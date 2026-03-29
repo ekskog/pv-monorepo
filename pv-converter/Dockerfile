@@ -1,24 +1,25 @@
-# Use a patched slim image to avoid vulnerabilities
-FROM python:3.11-slim-bookworm
+# Alpine is much more up-to-date for image libraries
+FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Install ONLY the necessary binaries. 
-# No ImageMagick = Less Bloat = More RAM for your app.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libheif-examples \
-    libavif-bin \
-    && rm -rf /var/lib/apt/lists/*
+# Install the latest conversion tools + build dependencies for psutil
+RUN apk add --no-cache \
+    libheif-tools \
+    libavif-apps \
+    gcc \
+    musl-dev \
+    python3-dev \
+    linux-headers
 
-# Copy and install Python requirements (must include psutil)
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy the rest of the code
 COPY . .
 
-# Unbuffered logs are crucial for debugging OOM crashes
 ENV PYTHONUNBUFFERED=1
-
 EXPOSE 3000
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000"]

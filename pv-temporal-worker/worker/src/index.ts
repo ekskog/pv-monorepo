@@ -4,7 +4,7 @@ import type { Configuration } from 'webpack';
 
 import * as convertActivities from './activities/convertImage';
 import * as metadataActivities from './activities/metadataActivity';
-import * as persistActivities from './activities/persistToMinio'; // kept for cleanupBatch
+import * as persistActivities from './activities/cleanup'; // cleanupBatch activity
 import * as reportActivities from './activities/reportProgress';
 
 // Suppress SDK info/debug logs — only WARN and above will appear in pod logs

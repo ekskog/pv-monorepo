@@ -19,7 +19,7 @@ export async function extractAndPersistMetadata(
   filename: string,
   objectName: string,
 ): Promise<MetadataResult> {
-  // console.log(`[metadataActivity] Starting metadata extraction for ${filename} -> ${objectName}`);
+  console.log(`[metadataActivity] Starting metadata extraction for ${filename} -> ${objectName}`);
 
   const imageBuffer = await fs.readFile(imagePath);
 

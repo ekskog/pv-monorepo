@@ -1,7 +1,7 @@
 import { proxyActivities, log, defineQuery, setHandler } from '@temporalio/workflow';
 import type * as convertDeps from '../activities/convertImage';
 import type * as metadataDeps from '../activities/metadataActivity';
-import type * as persistDeps from '../activities/persistToMinio';
+import type * as persistDeps from '../activities/cleanup';
 import type * as reportDeps from '../activities/reportProgress';
 
 type AllActivities = typeof convertDeps & typeof metadataDeps & typeof persistDeps & typeof reportDeps;
@@ -107,11 +107,27 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
 
     log.info('image: dispatching activities', { batchId, filename: image.filename, objectName });
 
-    // Conversion and metadata run in parallel for this single image
-    const [conversionResult, metadataResult] = await Promise.allSettled([
-      convertImage(image, objectName),
-      extractAndPersistMetadata(image.path, image.filename, objectName),
-    ]);
+    // Run metadata first, then conversion. Conversion must not start if metadata fails.
+    let metadataResult: any;
+    try {
+      const meta = await extractAndPersistMetadata(image.path, image.filename, objectName);
+      metadataResult = { status: 'fulfilled', value: meta };
+    } catch (err) {
+      metadataResult = { status: 'rejected', reason: err };
+    }
+
+    let conversionResult: any;
+    if (metadataResult.status === 'rejected') {
+      // Skip conversion if metadata failed
+      conversionResult = { status: 'rejected', reason: new Error(`Metadata failed: ${String(metadataResult.reason)}`) };
+    } else {
+      try {
+        const conv = await convertImage(image, objectName);
+        conversionResult = { status: 'fulfilled', value: conv };
+      } catch (err) {
+        conversionResult = { status: 'rejected', reason: err };
+      }
+    }
 
     log.info('image: activities settled', {
       batchId,

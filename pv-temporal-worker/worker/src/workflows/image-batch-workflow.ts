@@ -97,7 +97,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
   // ── Sequential loop — one image fully completes before the next starts.
   // Conversion + metadata still run in parallel for each individual image,
   // but we never have two conversions running simultaneously.
-  const imageResults: Array
+  const imageResults: Array<
     | { filename: string; success: true; objectName: string; conversionMetrics: any }
     | { filename: string; success: false; error: string }
   > = [];

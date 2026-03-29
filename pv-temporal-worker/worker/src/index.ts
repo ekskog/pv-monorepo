@@ -34,6 +34,7 @@ async function run() {
         return config;
       },
     },
+    maxConcurrentActivityExecutions: 1,
     activities: {
       ...convertActivities,
       ...metadataActivities,

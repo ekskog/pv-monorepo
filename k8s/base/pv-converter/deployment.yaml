@@ -73,5 +73,5 @@ spec:
               path: /health
               port: 3000
             periodSeconds: 10
-            failureThreshold: 2
+            failureThreshold: 10
             successThreshold: 1

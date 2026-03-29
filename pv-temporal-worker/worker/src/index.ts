@@ -50,7 +50,7 @@ async function run() {
       },
     },
     // Protects the 1GB RAM limit by forcing sequential activity execution
-    maxConcurrentActivityExecutions: 1,
+    maxConcurrentActivityTaskExecutions: 1,
     activities: {
       ...convertActivities,
       ...metadataActivities,

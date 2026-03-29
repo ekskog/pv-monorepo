@@ -1,71 +1,76 @@
 import subprocess
 import tempfile
 from pathlib import Path
-import psutil
 import os
 import gc
 import logging
 import resource
-import traceback
 
-# Setup logging for container transparency
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
-def _set_subprocess_limits():
-    """
-    Prevents a single image from taking down the whole container.
-    Caps the encoder at 750MB.
-    """
-    limit = 750 * 1024 * 1024 
+def _set_limits():
+    # Hard cap the subprocesses at 800MB to protect the 1GB container limit
+    # This prevents an unusually large image from killing the whole API
+    limit = 800 * 1024 * 1024 
     resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
 
-def log_mem(context: str):
-    process = psutil.Process(os.getpid())
-    mem = psutil.virtual_memory()
-    logger.info(
-        f"[{context}] Process RAM: {process.memory_info().rss / 1024 / 1024:.2f}MB | "
-        f"System Avail: {mem.available / 1024 / 1024:.2f}MB"
-    )
-
 def convert_to_avif(input_bytes: bytes, file_type: str) -> bytes:
+    """
+    Two-step conversion for HEIC to AVIF to avoid OOM in 1GB containers.
+    1. HEIC -> PNG (Disk-offloaded)
+    2. PNG -> AVIF (Disk-offloaded)
+    """
     file_type = file_type.lower().strip('.')
     
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         in_p = tmp_path / f"input.{file_type}"
         out_p = tmp_path / "output.avif"
+        png_p = tmp_path / "intermediate.png"
 
+        # Write input to disk and PURGE from Python RAM immediately
         in_p.write_bytes(input_bytes)
         del input_bytes
         gc.collect()
 
         try:
             if file_type == "heic":
-                # Modern libheif command
-                cmd = ["heif-enc", "--avif", "-q", "60", "--speed", "6", str(in_p), "-o", str(out_p)]
+                # STEP 1: Decode HEIC to PNG via heif-convert (Alpine binary name)
+                decode_res = subprocess.run(
+                    ["heif-convert", str(in_p), str(png_p)],
+                    capture_output=True, text=True, preexec_fn=_set_limits
+                )
+                if decode_res.returncode != 0:
+                    logger.error(f"Decode failed: {decode_res.stderr}")
+                    raise RuntimeError(f"Decode failed: {decode_res.stderr}")
+
+                # STEP 2: Encode PNG to AVIF via heif-enc
+                # Using only flags verified by your --help output
+                encode_res = subprocess.run(
+                    ["heif-enc", "--avif", "-q", "60", str(png_p), "-o", str(out_p)],
+                    capture_output=True, text=True, preexec_fn=_set_limits
+                )
+                if encode_res.returncode != 0:
+                    logger.error(f"Encode failed: {encode_res.stderr}")
+                    raise RuntimeError(f"Encode failed: {encode_res.stderr}")
+            
             else:
-                cmd = ["avifenc", "--speed", "6", "--jobs", "1", str(in_p), str(out_p)]
+                # Direct JPEG to AVIF using avifenc (which handles JPEGs natively)
+                res = subprocess.run(
+                    ["avifenc", "--speed", "6", "--jobs", "1", str(in_p), str(out_p)],
+                    capture_output=True, text=True, preexec_fn=_set_limits
+                )
+                if res.returncode != 0:
+                    raise RuntimeError(f"avifenc failed: {res.stderr}")
 
-            result = subprocess.run(cmd, capture_output=True, text=True, preexec_fn=_set_subprocess_limits)
-
-            # FALLBACK: If the version still hates '--speed', try one more time without it
-            if result.returncode != 0 and "unrecognized option '--speed'" in result.stderr:
-                logger.warning("Falling back to basic command (no --speed flag)")
-                cmd = ["heif-enc", "--avif", "-q", "60", str(in_p), "-o", str(out_p)]
-                result = subprocess.run(cmd, capture_output=True, text=True, preexec_fn=_set_subprocess_limits)
-
-            if result.returncode != 0:
-                raise RuntimeError(f"Encoder failed: {result.stderr}")
-
+            # Return the resulting bytes
+            if not out_p.exists():
+                raise FileNotFoundError("Output file was not created by the encoder.")
+                
             return out_p.read_bytes()
 
-        except Exception as e:
-            logger.error(f"Conversion error: {e}")
-            raise
-
-# Example cleanup for your API Route
-def cleanup_after_request():
-    """Call this after sending the response to ensure RAM resets"""
-    gc.collect()
-    log_mem("POST_REQUEST_CLEANUP")
+        finally:
+            # Explicitly cleanup the intermediate PNG if it exists
+            if png_p.exists():
+                png_p.unlink()
+            gc.collect()

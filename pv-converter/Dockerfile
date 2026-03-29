@@ -1,28 +1,24 @@
-# Use an official Python runtime as a parent image
-FROM python:3.11-slim
+# Use a patched slim image to avoid vulnerabilities
+FROM python:3.11-slim-bookworm
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libheif-dev \
+# Install ONLY the necessary binaries. 
+# No ImageMagick = Less Bloat = More RAM for your app.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libheif-examples \
     libavif-bin \
-    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt ./
+# Copy and install Python requirements (must include psutil)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
 COPY . .
 
-# Ensure logs are unbuffered
+# Unbuffered logs are crucial for debugging OOM crashes
 ENV PYTHONUNBUFFERED=1
 
-# Expose the port the app runs on
 EXPOSE 3000
 
-# Command to run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000"]

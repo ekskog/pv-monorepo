@@ -1,4 +1,4 @@
-// force worker rebuild to fix temporal connection issues 18/03/2026
+import http from 'http';
 import { NativeConnection, Worker, Runtime, DefaultLogger } from '@temporalio/worker';
 import type { Configuration } from 'webpack';
 
@@ -7,7 +7,21 @@ import * as metadataActivities from './activities/metadataActivity';
 import * as persistActivities from './activities/cleanup'; // cleanupBatch activity
 import * as reportActivities from './activities/reportProgress';
 
-// Suppress SDK info/debug logs — only WARN and above will appear in pod logs
+// 1. Start Health Server Immediately
+// Binding to '0.0.0.0' is mandatory for Kubernetes probes to connect
+http.createServer((req, res) => {
+  if (req.url === '/healthz' || req.url === '/ready') {
+    res.writeHead(200);
+    res.end('OK');
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+}).listen(3000, '0.0.0.0', () => {
+  console.log('✓ Health check server listening on 0.0.0.0:3000');
+});
+
+// Suppress SDK info/debug logs
 Runtime.install({
   logger: new DefaultLogger('INFO'),
 });
@@ -21,6 +35,7 @@ async function run() {
   if (!TEMPORAL_NAMESPACE) throw new Error('TEMPORAL_NAMESPACE environment variable is required');
   if (!TASK_QUEUE) throw new Error('TASK_QUEUE environment variable is required');
 
+  console.log('Connecting to Temporal at:', TEMPORAL_ADDRESS);
   const connection = await NativeConnection.connect({ address: TEMPORAL_ADDRESS });
 
   const worker = await Worker.create({
@@ -30,15 +45,16 @@ async function run() {
     workflowsPath: require.resolve('./workflows/image-batch-workflow'),
     bundlerOptions: {
       webpackConfigHook: (config: Configuration) => {
-        config.infrastructureLogging = { level: 'error' }; // suppresses asset/module logs
+        config.infrastructureLogging = { level: 'error' };
         return config;
       },
     },
+    // Protects the 1GB RAM limit by forcing sequential activity execution
     maxConcurrentActivityExecutions: 1,
     activities: {
       ...convertActivities,
       ...metadataActivities,
-      ...persistActivities, // still needed for cleanupBatch
+      ...persistActivities,
       ...reportActivities,
     },
   });

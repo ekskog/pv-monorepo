@@ -23,6 +23,18 @@ spec:
       - name: worker
         image: ghcr.io/ekskog/pv-worker:latest
         imagePullPolicy: Always
+        # --- ADDED PORT FOR HEALTH SERVER ---
+        ports:
+        - containerPort: 3000
+          name: health
+        # --- ADDED READINESS PROBE ---
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 3
         env:
         - name: TEMPORAL_ADDRESS
           valueFrom:
@@ -55,13 +67,14 @@ spec:
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfs-storage
+        # --- ADJUSTED RESOURCE LIMITS ---
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
             memory: "512Mi"
             cpu: "500m"
+          limits:
+            memory: "1Gi"    # High enough for raw pixel buffers
+            cpu: "1000m"    # 1 full core for faster encoding
       volumes:
       - name: nfs-storage
         persistentVolumeClaim:

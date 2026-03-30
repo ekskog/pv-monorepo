@@ -151,3 +151,5 @@ async def convert_image(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=3000)
+
+# Force rebuild 30/03 13:40    

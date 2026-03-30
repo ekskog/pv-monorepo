@@ -12,6 +12,10 @@ RUN apk add --no-cache \
     python3-dev \
     linux-headers
 
+# Disk-backed scratch dir for intermediate files (NOT tmpfs).
+# Intermediate PNGs from HEIC decoding land here so they don't count against RAM.
+RUN mkdir -p /app/scratch
+
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

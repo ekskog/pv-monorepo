@@ -71,19 +71,23 @@ export async function convertImage(image: ImageFile, objectName: string): Promis
 
     console.log(`[convertImage] ✓ Converted and written to MinIO: ${objectName}`);
 
-    return {
-      filename: image.filename,
-      success: true,
-      objectName: result.object_name,
-      metrics: result.metrics,
-    };
-  } finally {
-    // Always attempt to remove the intermediate NFS file regardless of conversion outcome
+    // Only clean up the NFS file after confirmed success
     try {
       await fs.unlink(image.path);
       console.log(`[convertImage] Removed intermediate file: ${image.path}`);
     } catch (e) {
       console.warn(`[convertImage] Failed to remove intermediate file ${image.path}: ${e instanceof Error ? e.message : String(e)}`);
     }
+
+    return {
+      filename: image.filename,
+      success: true,
+      objectName: result.object_name,
+      metrics: result.metrics,
+    };
+
+  } catch (err) {
+    // Do NOT delete the file here — Temporal will retry and needs it
+    console.error(`[convertImage] Failed for ${image.filename}, leaving NFS file intact for retry`);
+    throw err;
   }
-}

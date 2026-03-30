@@ -49,7 +49,6 @@ export async function convertImage(image: ImageFile, objectName: string): Promis
   formData.set('object_name', objectName);
   formData.set('bucket', MINIO_BUCKET);
 
-  let result: ConverterResponse | null = null;
   try {
     const response = await fetch(`${AVIF_CONVERTER_URL}/convert`, {
       method: 'POST',
@@ -62,7 +61,7 @@ export async function convertImage(image: ImageFile, objectName: string): Promis
       throw new Error(`Converter returned ${response.status}: ${errorText}`);
     }
 
-    result = (await response.json()) as ConverterResponse;
+    const result = (await response.json()) as ConverterResponse;
 
     if (!result.success) {
       console.error(`[convertImage] Converter reported failure for ${image.filename}: ${JSON.stringify(result)}`);
@@ -91,3 +90,4 @@ export async function convertImage(image: ImageFile, objectName: string): Promis
     console.error(`[convertImage] Failed for ${image.filename}, leaving NFS file intact for retry`);
     throw err;
   }
+}

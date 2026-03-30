@@ -34,6 +34,21 @@ const upload = multer({
   },
 });
 
+function normalizeFolderPath(input) {
+  if (typeof input !== "string") return "";
+  let p = input.trim();
+  try {
+    // SPA may send an already-encoded name; tolerate both.
+    p = decodeURIComponent(p);
+  } catch (_) {
+    // ignore decode errors; treat as already-decoded/plain text
+  }
+  p = p.replace(/^\/+/, ""); // Remove leading slashes
+  p = p.replace(/\/+$/, ""); // Remove trailing slashes
+  p = p.replace(/\/+/g, "/"); // Replace multiple slashes with single slash
+  return p;
+}
+
 const getAlbums = (minioClient) => async (req, res) => {
   try {
     const albums = await database.getAllAlbums();
@@ -150,6 +165,85 @@ const createAlbum = (minioClient) => async (req, res) => {
         bucket: config.minio.bucketName,
         folderPath: normalizedPath,
         folderName: cleanPath,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+// DELETE /buckets/:bucketName/folders - Delete a folder and all its contents (Admin only)
+const deleteAlbumFolder = (minioClient) => async (req, res) => {
+  try {
+    const requestedBucket = req.params.bucketName;
+    const { folderPath } = req.body || {};
+
+    const cleanPath = normalizeFolderPath(folderPath);
+    if (!cleanPath) {
+      return res.status(400).json({
+        success: false,
+        error: "folderPath is required",
+      });
+    }
+
+    // We only support the configured bucket; keep behavior explicit.
+    if (requestedBucket && requestedBucket !== config.minio.bucketName) {
+      return res.status(404).json({
+        success: false,
+        error: "Bucket not found",
+      });
+    }
+
+    const prefix = `${cleanPath}/`;
+
+    // Collect all objects under the folder prefix
+    const objectNames = [];
+    const stream = minioClient.listObjectsV2(
+      config.minio.bucketName,
+      prefix,
+      true,
+    );
+
+    for await (const obj of stream) {
+      if (obj && obj.name) objectNames.push(obj.name);
+    }
+
+    if (objectNames.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Folder not found or empty",
+      });
+    }
+
+    // Delete objects in batches to avoid huge requests
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < objectNames.length; i += BATCH_SIZE) {
+      const batch = objectNames.slice(i, i + BATCH_SIZE);
+      // MinIO removeObjects expects an array of object names
+      // eslint-disable-next-line no-await-in-loop
+      await minioClient.removeObjects(config.minio.bucketName, batch);
+    }
+
+    // Best-effort: delete album record from DB (ignore if missing)
+    try {
+      const album = await database.getAlbumByName(cleanPath);
+      if (album) {
+        await database.deleteAlbum(album.id);
+      }
+    } catch (dbErr) {
+      debugAlbum(`DB cleanup failed for album '${cleanPath}': ${dbErr.message}`);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Folder '${prefix}' and ${objectNames.length} objects deleted successfully`,
+      data: {
+        bucket: config.minio.bucketName,
+        folderPath: prefix,
+        deletedObjects: objectNames.length,
       },
     });
   } catch (error) {
@@ -705,6 +799,12 @@ module.exports = (minioClient, { pendingJobs, processFilesInBackground }) => {
     requireRole("admin"),
     upload.array("files"),
     uploadFiles(pendingJobs)
+  );
+  router.delete(
+    "/buckets/:bucketName/folders",
+    authenticateToken,
+    requireRole("admin"),
+    deleteAlbumFolder(minioClient),
   );
   router.post(
     "/album/:folderPath",

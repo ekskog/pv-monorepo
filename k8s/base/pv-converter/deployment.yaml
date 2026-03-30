@@ -21,7 +21,7 @@ spec:
       labels:
         app: pv-avif-converter
     spec:
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 60
       tolerations:
         - key: "dedicated"
           operator: "Equal"
@@ -35,7 +35,15 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: In
                     values:
-                      - k3sa.freki.001
+                      - ubumac
+      hostAliases:
+        - hostnames:
+            - mjolnir
+          ip: 192.168.1.8
+      volumes:
+        - name: nfs-storage
+          persistentVolumeClaim:
+            claimName: nfs-pv-claim
       containers:
         - name: pv-avif-converter
           image: ghcr.io/ekskog/pv-converter:latest
@@ -51,11 +59,14 @@ spec:
               value: "192.168.1.8:9000"
           resources:
             requests:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "250m"
             limits:
-              memory: "768Mi"   # reduced from 1024Mi — 768Mi covers 48MP HEIC with margin
-              cpu: "2000m"      # raised from 1000m — freki has 8 logical cores, give encoder room to breathe
+              memory: "4Gi"
+              cpu: "2000m"
+          volumeMounts:
+            - mountPath: /nfs-storage
+              name: nfs-storage
           startupProbe:
             httpGet:
               path: /health
@@ -75,5 +86,6 @@ spec:
               path: /health
               port: 3000
             periodSeconds: 10
-            failureThreshold: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
             successThreshold: 1

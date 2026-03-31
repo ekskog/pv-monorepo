@@ -14,7 +14,7 @@ const MetadataService = require("../services/metadata-service");
 // Use memory storage to handle the manual write to NFS
 const upload = multer({ storage: multer.memoryStorage() });
 
-module.exports = (temporalClient, config, { sendSSEEvent, persistProgress } = {}) => {
+module.exports = (temporalClient, config, { sendSSEEvent, persistProgress, getProgress } = {}) => {
     const metadataService = new MetadataService(null);
 
     const toIsoStringOrNull = (value) => {
@@ -215,10 +215,18 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress } = {}
             }
 
             // Return payload for closed workflows without blocking running ones.
-            if (status === 'COMPLETED') {
+                        if (status === 'COMPLETED') {
                 const resultStartedAt = Date.now();
                 debugBulkApi(`[status] Calling result() for completed workflowId=${workflowId}`);
-                response.result = await handle.result();
+                                response.result = await handle.result();
+                                // Persist final result snapshot for future reads
+                                try {
+                                    if (typeof persistProgress === 'function') {
+                                        persistProgress(batchId, { result: response.result });
+                                    }
+                                } catch (e) {
+                                    debugBulkApi(`[status] Failed to persist result for ${workflowId}: ${e?.message || e}`);
+                                }
                 debugBulkApi(
                     `[status] result() completed for workflowId=${workflowId} in ${Date.now() - resultStartedAt}ms`
                 );
@@ -398,28 +406,62 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress } = {}
             } catch (pErr) {
                 debugBulkApi('[progress] getProgress (stringified) for', workflowId, JSON.stringify(progress));
             }
-            const batchId = workflowId.replace(/^batch-/, '');
-            return res.json({
-                workflowId,
-                batchId,
-                status: description.status.name,
-                progress: {
-                    totalRequested: progress.totalRequested,
-                    processed: progress.processed,
-                    successful: progress.successful,
-                    failed: progress.failed,
-                    percentage: progress.percentage,
-                },
-                meta: {
-                    startedAt: progress.startedAt,
-                    updatedAt: progress.updatedAt,
-                    completedAt: progress.completedAt,
-                    message: progress.message,
-                    lastSuccessFile: progress.lastSuccessFile,
-                    lastFailedFile: progress.lastFailedFile,
-                    error: progress.error,
-                },
-            });
+                        const batchId = workflowId.replace(/^batch-/, '');
+
+                        // If there's a persisted snapshot (result or progress), prefer that for completed workflows
+                        if (typeof getProgress === 'function') {
+                            try {
+                                const persisted = getProgress(batchId);
+                                if (persisted) {
+                                    return res.json({
+                                        workflowId,
+                                        batchId,
+                                        status: description.status.name,
+                                        progress: {
+                                            totalRequested: persisted.totalRequested ?? persisted.total ?? null,
+                                            processed: persisted.processed ?? null,
+                                            successful: persisted.successful ?? persisted.uploaded ?? null,
+                                            failed: persisted.failed ?? null,
+                                            percentage: persisted.percentage ?? null,
+                                        },
+                                        meta: {
+                                            startedAt: persisted.startedAt ?? null,
+                                            updatedAt: persisted.updatedAt ?? null,
+                                            completedAt: persisted.completedAt ?? null,
+                                            message: persisted.message ?? null,
+                                            lastSuccessFile: persisted.lastSuccessFile ?? null,
+                                            lastFailedFile: persisted.lastFailedFile ?? null,
+                                            error: persisted.error ?? null,
+                                        },
+                                    });
+                                }
+                            } catch (e) {
+                                debugBulkApi('[progress] reading persisted data failed for', workflowId, e?.message || e);
+                                // fallthrough to try live query
+                            }
+                        }
+
+                        return res.json({
+                                workflowId,
+                                batchId,
+                                status: description.status.name,
+                                progress: {
+                                        totalRequested: progress.totalRequested,
+                                        processed: progress.processed,
+                                        successful: progress.successful,
+                                        failed: progress.failed,
+                                        percentage: progress.percentage,
+                                },
+                                meta: {
+                                        startedAt: progress.startedAt,
+                                        updatedAt: progress.updatedAt,
+                                        completedAt: progress.completedAt,
+                                        message: progress.message,
+                                        lastSuccessFile: progress.lastSuccessFile,
+                                        lastFailedFile: progress.lastFailedFile,
+                                        error: progress.error,
+                                },
+                        });
         } catch (err) {
             debugBulkApi(`[progress] Failed for workflowId=${req.params.workflowId}: ${err.message}`);
             if (err.message?.includes('not found') || err.name === 'WorkflowNotFoundError') {

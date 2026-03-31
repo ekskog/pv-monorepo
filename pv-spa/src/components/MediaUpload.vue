@@ -1,14 +1,8 @@
 <template>
   <!-- Upload Dialog -->
-  <div
-    v-if="showUploadDialog"
-    class="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-6"
-    @click="closeUploadDialog"
-  >
-    <div
-      class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-xl max-h-[90vh] overflow-y-auto"
-      @click.stop
-    >
+  <div v-if="showUploadDialog" class="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-6"
+    @click="closeUploadDialog">
+    <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-xl max-h-[90vh] overflow-y-auto" @click.stop>
       <h3 class="text-lg font-semibold mb-6 flex items-center gap-2">
         <i class="fas fa-cloud-upload-alt text-blue-500"></i> Upload Media
       </h3>
@@ -17,18 +11,23 @@
       <div class="flex gap-2 mb-3">
         <button
           class="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:border-blue-500 hover:text-blue-500 transition"
-          @click="triggerUpload('photos')"
-        >
-          <i class="fas fa-image text-base"></i> Photos (max 10)
+          @click="triggerUpload('photos')">
+          <i class="fas fa-layer-group text-base"></i> Photos
+          <i class="fas fa-circle-info text-xs text-emerald-600"
+            title="Follow progress on Monitor Tab."
+            aria-label="Bulk upload info"></i>
+          <!-- hidden for now 
+        </i>
+          <i class="fas fa-image text-base"></i> Photos
+          -->
         </button>
         <button
           class="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:border-blue-500 hover:text-blue-500 transition"
-          @click="triggerUpload('videos')"
-        >
+          @click="triggerUpload('bulk-photos')">
           <i class="fas fa-video text-base"></i> Videos
         </button>
       </div>
-
+      <!-- Use only tempral uploads for now, hide the legacy paths
       <div class="mb-6">
         <button
           class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-emerald-300 bg-emerald-50 rounded-lg text-emerald-800 text-sm font-semibold hover:border-emerald-500 hover:bg-emerald-100 transition"
@@ -43,16 +42,10 @@
           ></i>
         </button>
       </div>
-
+    -->
       <!-- Hidden File Input -->
-      <input
-        ref="fileInput"
-        type="file"
-        :accept="isImageUploadMode ? 'image/*' : 'video/*'"
-        multiple
-        @change="handleFileSelect"
-        class="hidden"
-      />
+      <input ref="fileInput" type="file" :accept="isImageUploadMode ? 'image/*' : 'video/*'" multiple
+        @change="handleFileSelect" class="hidden" />
 
       <!-- Selected Files Summary -->
       <div v-if="selectedFiles.length > 0" class="mb-6 text-sm text-gray-700">
@@ -64,32 +57,28 @@
           <span v-else class="text-gray-500">(bulk mode)</span>
         </p>
       </div>
-      
+
       <!-- File Limit Warning -->
-      <div v-if="uploadType !== 'bulk-photos' && filesRejectedDueToLimit" class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+      <div v-if="uploadType !== 'bulk-photos' && filesRejectedDueToLimit"
+        class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
         <p class="text-sm text-yellow-800">
           <i class="fas fa-exclamation-triangle mr-2"></i>
           Maximum file limit reached (10 files). Remove some files to add more.
         </p>
       </div>
-      
+
       <!-- Selected Files List -->
-      <div v-if="uploadType !== 'bulk-photos' && filesRejectedDueToLimit && selectedFiles.length > 0" class="mb-6 max-h-40 overflow-y-auto">
+      <div v-if="uploadType !== 'bulk-photos' && filesRejectedDueToLimit && selectedFiles.length > 0"
+        class="mb-6 max-h-40 overflow-y-auto">
         <div class="space-y-2">
-          <div 
-            v-for="(file, index) in selectedFiles" 
-            :key="index"
-            class="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
-          >
+          <div v-for="(file, index) in selectedFiles" :key="index"
+            class="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-gray-900 truncate">{{ file.name }}</p>
               <p class="text-xs text-gray-500">{{ (file.size / (1024 * 1024)).toFixed(2) }} MB</p>
             </div>
-            <button
-              @click="removeFile(index)"
-              class="ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
-              title="Remove file"
-            >
+            <button @click="removeFile(index)" class="ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+              title="Remove file">
               <i class="fas fa-times"></i>
             </button>
           </div>
@@ -107,44 +96,31 @@
       <!-- Upload Progress -->
       <div v-if="uploading" class="mb-6">
         <div class="w-full h-2 bg-gray-200 rounded overflow-hidden mb-2">
-          <div
-            class="h-full bg-blue-500 transition-all duration-300"
-            :style="{ width: `${uploadProgress}%` }"
-          ></div>
+          <div class="h-full bg-blue-500 transition-all duration-300" :style="{ width: `${uploadProgress}%` }"></div>
         </div>
         <p class="text-center text-sm text-gray-600">{{ uploadStatus }}</p>
       </div>
 
       <!-- Dialog Actions -->
       <div class="flex justify-end gap-4 mt-6">
-        <button
-          class="bg-gray-200 text-gray-800 px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition"
-          @click="closeUploadDialog"
-        >
+        <button class="bg-gray-200 text-gray-800 px-4 py-2 rounded text-sm font-medium hover:bg-gray-300 transition"
+          @click="closeUploadDialog">
           {{ uploadProgress === 100 && !uploading ? 'Done' : 'Cancel' }}
         </button>
-        <button
-          v-if="uploadProgress < 100"
+        <button v-if="uploadProgress < 100"
           class="bg-blue-500 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-600 transition disabled:bg-blue-300 disabled:cursor-not-allowed"
-          @click="uploadFiles"
-          :disabled="selectedFiles.length === 0 || uploading"
-        >
-          {{ uploading ? 'Uploading...' : `Upload ${selectedFiles.length} ${uploadType === 'videos' ? 'Video' : 'Photo'}${selectedFiles.length !== 1 ? 's' : ''}` }}
+          @click="uploadFiles" :disabled="selectedFiles.length === 0 || uploading">
+          {{ uploading ? 'Uploading...' : `Upload ${selectedFiles.length} ${uploadType === 'videos' ? 'Video' :
+            'Photo'}${selectedFiles.length !== 1 ? 's' : ''}` }}
         </button>
       </div>
     </div>
   </div>
 
   <!-- Upload Complete Modal -->
-  <div
-    v-if="showUploadCompleteModal"
-    class="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-6"
-    @click="showUploadCompleteModal = false"
-  >
-    <div
-      class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md"
-      @click.stop
-    >
+  <div v-if="showUploadCompleteModal" class="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-6"
+    @click="showUploadCompleteModal = false">
+    <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md" @click.stop>
       <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
         <i class="fas fa-check-circle text-green-500"></i> Upload Complete
       </h3>
@@ -152,10 +128,8 @@
         Your files have been uploaded. The album will refresh automatically when processing is complete.
       </p>
       <div class="flex justify-end">
-        <button
-          class="bg-blue-500 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-600 transition"
-          @click="confirmUploadComplete"
-        >
+        <button class="bg-blue-500 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-600 transition"
+          @click="confirmUploadComplete">
           OK
         </button>
       </div>
@@ -224,7 +198,7 @@ const triggerUpload = (type) => {
   uploadType.value = type
   selectedFiles.value = []
   filesRejectedDueToLimit.value = false
-  
+
   // Reset the file input to ensure accept attribute is properly applied
   // This is especially important on mobile devices (iOS/Android) where the
   // accept attribute might not update reactively when uploadType changes
@@ -233,7 +207,7 @@ const triggerUpload = (type) => {
     const acceptValue = (type === 'photos' || type === 'bulk-photos') ? 'image/*' : 'video/*'
     fileInput.value.setAttribute('accept', acceptValue)
   }
-  
+
   // Small delay to ensure attribute is set before opening picker
   setTimeout(() => {
     fileInput.value?.click()
@@ -394,9 +368,9 @@ async function uploadFiles() {
         jobId: pendingJobId.value,
       });
     }
-    
+
     // Close dialog after successful upload
-    emit('close', { 
+    emit('close', {
       filesCount: selectedFiles.value.length,
       jobId: pendingJobId.value,
       mode: uploadType.value === 'bulk-photos' ? 'temporal-bulk' : 'legacy-sse'

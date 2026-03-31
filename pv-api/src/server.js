@@ -366,7 +366,7 @@ async function startServer() {
             ),
           ]);
           results.temporal = true;
-          app.use("/bulk", temporalRoutes(temporalClient, config, { sendSSEEvent, persistProgress })); // ← this line was lost
+          app.use("/bulk", temporalRoutes(temporalClient, config, { sendSSEEvent, persistProgress, getProgress })); // pass getProgress to temporal routes
         }
       } catch (e) {
         debugServer("Dependency check: Temporal failed:", e.message || e);

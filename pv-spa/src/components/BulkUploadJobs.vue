@@ -1,19 +1,20 @@
 <template>
   <div class="max-w-6xl mx-auto p-4 md:p-8">
+    
     <div class="mb-6 rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50/40 p-5 md:p-6">
-      <h2 class="text-2xl font-semibold text-slate-900">Monitor</h2>
+      <h2 class="text-2xl font-semibold text-slate-900">Monitor Media Uploads</h2>
       <p class="mt-1 text-sm text-slate-600">
-        Two focused panels: Temporal workflow status on the left and live SSE updates for non-bulk uploads on the right.
+        
       </p>
     </div>
-
-    <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+  
+  
+    <section class="grid grid-cols-1 gap-6">
       <article class="rounded-xl border border-gray-200 bg-white p-4 md:p-5 min-h-[30rem]">
         <div class="flex items-center justify-between gap-3">
-          <div>
-            <h3 class="text-base font-semibold text-gray-900">Temporal Bulk Workflows</h3>
-            <p class="mt-1 text-sm text-gray-600">Track running workflows and optionally include completed ones.</p>
-          </div>
+
+        </div>
+        <div class="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <label class="text-xs text-gray-600">Show</label>
             <select
@@ -25,22 +26,22 @@
               <option value="ALL">All</option>
             </select>
           </div>
-        </div>
 
-        <div class="mt-4 flex flex-wrap gap-2">
-          <span class="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-            Running: {{ temporalRunningCount }}
-          </span>
-          <span class="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-            Completed: {{ temporalCompletedCount }}
-          </span>
-          <button
-            class="bg-white text-gray-700 border border-gray-300 px-3 py-1 rounded-md text-xs font-medium hover:bg-gray-50 disabled:opacity-60"
-            @click="loadJobs"
-            :disabled="loading"
-          >
-            {{ loading ? 'Refreshing...' : 'Refresh' }}
-          </button>
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+              Running: {{ temporalRunningCount }}
+            </span>
+            <span class="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+              Completed: {{ temporalCompletedCount }}
+            </span>
+            <button
+              class="bg-white text-gray-700 border border-gray-300 px-3 py-1 rounded-md text-xs font-medium hover:bg-gray-50 disabled:opacity-60"
+              @click="loadJobs"
+              :disabled="loading"
+            >
+              {{ loading ? 'Refreshing...' : 'Refresh' }}
+            </button>
+          </div>
         </div>
 
         <div v-if="error" class="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
@@ -66,18 +67,33 @@
                 {{ job.status }}
               </span>
             </div>
-            <div class="mt-2 text-xs text-gray-600">Batch: <span class="font-mono">{{ shortId(job.batchId) }}</span></div>
-            <div class="mt-2 text-xs text-gray-600">Workflow: <span class="font-mono">{{ shortId(job.workflowId) }}</span></div>
+            <div class="mt-2 text-xs text-gray-600">Workflow: <span class="font-mono break-all">{{ job.workflowId || '-' }}</span></div>
+
             <div class="mt-2 text-sm text-gray-700">
-              <span v-if="progressMap[job.batchId]">
-                {{ progressMap[job.batchId].uploaded }} / {{ progressMap[job.batchId].total }} files · {{ progressMap[job.batchId].percentage }}%
-              </span>
+              <template v-if="progressMap[job.batchId]">
+                <div class="flex flex-wrap items-center gap-3 text-sm text-gray-700">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">Succeeded</span>
+                    <span class="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">{{ progressMap[job.batchId].uploaded ?? 0 }}</span>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">Failed</span>
+                    <span class="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">{{ progressMap[job.batchId].failed ?? 0 }}</span>
+                  </div>
+
+                  <div class="text-xs text-gray-500">{{ progressMap[job.batchId].current ?? ( (progressMap[job.batchId].uploaded ?? 0) + (progressMap[job.batchId].failed ?? 0) ) }} / {{ progressMap[job.batchId].total ?? '-' }} files</div>
+
+                  <div class="ml-2 text-xs text-gray-500">{{ progressMap[job.batchId].percentage ?? 0 }}%</div>
+                </div>
+              </template>
               <span v-else class="text-gray-400">No progress sample yet</span>
             </div>
           </div>
         </div>
       </article>
 
+      <!--  Hide Legacy
       <article class="rounded-xl border border-gray-200 bg-white p-4 md:p-5 min-h-[30rem]">
         <div class="flex items-center justify-between gap-3">
           <div>
@@ -135,6 +151,7 @@
           </section>
         </div>
       </article>
+    -->
     </section>
   </div>
 </template>

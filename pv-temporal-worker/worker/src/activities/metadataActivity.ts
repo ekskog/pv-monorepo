@@ -44,9 +44,15 @@ export async function extractAndPersistMetadata(
 
   // console.log(`[metadataActivity] ✓ Metadata extracted and written to MinIO for ${filename}`);
 
+  const metadataTimeMs = Date.now() - (response?.headers?.get('x-start-ts') ? Number(response.headers.get('x-start-ts')) : 0);
+
   return {
     filename,
     success: true,
     objectName: result.object_name,
+    // include basic timing so workflows can compute averages
+    metrics: {
+      metadataTimeMs: metadataTimeMs > 0 ? metadataTimeMs : null,
+    },
   };
 }

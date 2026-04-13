@@ -169,53 +169,6 @@ async request(endpoint, options = {}) {
     });
   }
 
-  // File upload - Updated to match API spec
-  async uploadFile(bucketName, files, folderPath = "") {
-    const formData = new FormData();
-
-    // Add files to form data
-    if (Array.isArray(files)) {
-      files.forEach((file) => {
-        formData.append("files", file);
-      });
-    } else {
-      formData.append("files", files);
-    }
-
-    // Add folder path if provided
-    if (folderPath) {
-      formData.append("folderPath", folderPath); // Don't encode here, let the backend handle it
-    }
-
-    const API_BASE_URL = this.getApiBaseUrl();
-    const url = `${API_BASE_URL}/buckets/${bucketName}/upload`;
-
-    // Prepare headers (don't set Content-Type for FormData)
-    const headers = {};
-
-    // Add auth token if available
-    const token = this.getAuthToken();
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      throw error;
-    }
-  }
-
   // Temporal bulk image upload (202 Accepted + batchId)
   async uploadBulkToTemporal(folder, files) {
     const formData = new FormData();
@@ -340,62 +293,6 @@ async request(endpoint, options = {}) {
     }
   }
 
-  // Single file upload with progress tracking
-  async uploadSingleFile(bucketName, file, folderPath = "", onProgress = null) {
-    const formData = new FormData();
-    formData.append("files", file);
-
-    if (folderPath) {
-      formData.append("folderPath", folderPath);
-    }
-
-    const API_BASE_URL = this.getApiBaseUrl();
-    const url = `${API_BASE_URL}/buckets/${bucketName}/upload`;
-
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-
-      // Track upload progress
-      if (onProgress) {
-        xhr.upload.addEventListener("progress", (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = (event.loaded / event.total) * 100;
-            onProgress(percentComplete);
-          }
-        });
-      }
-
-      // Handle completion
-      xhr.addEventListener("load", () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            resolve(response);
-          } catch (error) {
-            reject(new Error("Invalid JSON response"));
-          }
-        } else {
-          reject(new Error(`HTTP error! status: ${xhr.status}`));
-        }
-      });
-
-      // Handle errors
-      xhr.addEventListener("error", () => {
-        reject(new Error("Network error occurred"));
-      });
-
-      // Start the upload - MUST be called before setting headers
-      xhr.open("POST", url);
-
-      // Add auth header if available - AFTER xhr.open()
-      const token = this.getAuthToken();
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      }
-
-      xhr.send(formData);
-    });
-  }
 
   // Object URL generation for downloading/viewing files
   getObject(albumName, objectName) {

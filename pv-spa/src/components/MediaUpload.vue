@@ -53,37 +53,9 @@
           <strong>{{ selectedFiles.length }}</strong>
           file{{ selectedFiles.length > 1 ? 's' : '' }} selected —
           <strong>{{ totalSizeMB }}</strong> MB total
-          <span v-if="uploadType !== 'bulk-photos'" class="text-gray-500">(max 10 files)</span>
-          <span v-else class="text-gray-500">(bulk mode)</span>
         </p>
       </div>
 
-      <!-- File Limit Warning -->
-      <div v-if="uploadType !== 'bulk-photos' && filesRejectedDueToLimit"
-        class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <p class="text-sm text-yellow-800">
-          <i class="fas fa-exclamation-triangle mr-2"></i>
-          Maximum file limit reached (10 files). Remove some files to add more.
-        </p>
-      </div>
-
-      <!-- Selected Files List -->
-      <div v-if="uploadType !== 'bulk-photos' && filesRejectedDueToLimit && selectedFiles.length > 0"
-        class="mb-6 max-h-40 overflow-y-auto">
-        <div class="space-y-2">
-          <div v-for="(file, index) in selectedFiles" :key="index"
-            class="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-gray-900 truncate">{{ file.name }}</p>
-              <p class="text-xs text-gray-500">{{ (file.size / (1024 * 1024)).toFixed(2) }} MB</p>
-            </div>
-            <button @click="removeFile(index)" class="ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
-              title="Remove file">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-        </div>
-      </div>
 
       <!-- Error Message -->
       <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -165,10 +137,9 @@ const emit = defineEmits(['close', 'jobReady'])
 
 // Constants
 const BUCKET_NAME = 'photovault'
-const MAX_LEGACY_FILES = 10
 
 // Reactive state
-const uploadType = ref('photos')
+const uploadType = ref('bulk-photos')
 const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadStatus = ref('')
@@ -179,8 +150,7 @@ const error = ref(null)
 const fileInput = ref(null)
 const showUploadCompleteModal = ref(false)
 const pendingJobId = ref(null)
-const filesRejectedDueToLimit = ref(false)
-const isImageUploadMode = computed(() => uploadType.value === 'photos' || uploadType.value === 'bulk-photos')
+const isImageUploadMode = computed(() => uploadType.value === 'bulk-photos')
 
 // Watch for job completion
 watch(() => props.currentJobId, (newJobId, oldJobId) => {
@@ -197,7 +167,6 @@ watch(() => props.currentJobId, (newJobId, oldJobId) => {
 const triggerUpload = (type) => {
   uploadType.value = type
   selectedFiles.value = []
-  filesRejectedDueToLimit.value = false
 
   // Reset the file input to ensure accept attribute is properly applied
   // This is especially important on mobile devices (iOS/Android) where the
@@ -218,40 +187,17 @@ const triggerUpload = (type) => {
 const handleFileSelect = (event) => {
   const files = Array.from(event.target.files)
   const validFiles = files.filter(file =>
-    (uploadType.value === 'photos' || uploadType.value === 'bulk-photos')
+    uploadType.value === 'bulk-photos'
       ? file.type.startsWith('image/')
       : file.type.startsWith('video/')
   )
-
-  // Legacy upload paths keep the 10-file cap; bulk mode has no cap.
-  const enforceLimit = uploadType.value !== 'bulk-photos'
-  if (enforceLimit) {
-    const totalFilesAfterAdd = selectedFiles.value.length + validFiles.length
-    if (totalFilesAfterAdd > MAX_LEGACY_FILES) {
-      const allowedFiles = validFiles.slice(0, MAX_LEGACY_FILES - selectedFiles.value.length)
-      selectedFiles.value.push(...allowedFiles)
-      filesRejectedDueToLimit.value = true
-      alert(`Maximum ${MAX_LEGACY_FILES} files allowed. Only ${allowedFiles.length} files were added.`)
-    } else {
-      selectedFiles.value.push(...validFiles)
-    }
-  } else {
-    selectedFiles.value.push(...validFiles)
-  }
+  selectedFiles.value.push(...validFiles)
 
   if (validFiles.length !== files.length) {
-    alert(`Some files were skipped. Only ${uploadType.value} are allowed.`)
+    alert(`Some files were skipped. Only ${uploadType.value === 'bulk-photos' ? 'images' : 'videos'} are allowed.`)
   }
 }
 
-// Remove a file from the selection
-const removeFile = (index) => {
-  selectedFiles.value.splice(index, 1)
-  // Reset the flag if we're now below the limit
-  if (selectedFiles.value.length < MAX_LEGACY_FILES) {
-    filesRejectedDueToLimit.value = false
-  }
-}
 
 const totalSizeMB = computed(() => {
   const totalBytes = selectedFiles.value.reduce((sum, file) => sum + file.size, 0)
@@ -343,38 +289,24 @@ async function uploadFiles() {
       throw new Error(response.error || 'Upload failed');
     }
 
-    if (uploadType.value === 'bulk-photos') {
-      if (!response.success || !response.batchId) {
-        throw new Error(response.error || 'Bulk upload accepted response missing batchId');
-      }
-
-      const workflowId = `batch-${response.batchId}`;
-      console.log('[MediaUpload] Bulk upload accepted, workflowId:', workflowId);
-      pendingJobId.value = workflowId;
-      emit('jobReady', {
-        mode: 'temporal-bulk',
-        batchId: response.batchId,
-        workflowId,
-      });
-    } else {
-      // Legacy upload path (SSE-based) remains unchanged.
-      if (!response.success) {
-        throw new Error(response.error || 'Upload failed');
-      }
-
-      console.log('[MediaUpload] Upload complete, jobId:', response.data.jobId);
-      pendingJobId.value = response.data.jobId;
-      emit('jobReady', {
-        mode: 'legacy-sse',
-        jobId: pendingJobId.value,
-      });
+    if (!response.success || !response.batchId) {
+      throw new Error(response.error || 'Bulk upload accepted response missing batchId');
     }
+
+    const workflowId = `batch-${response.batchId}`;
+    console.log('[MediaUpload] Bulk upload accepted, workflowId:', workflowId);
+    pendingJobId.value = workflowId;
+    emit('jobReady', {
+      mode: 'temporal-bulk',
+      batchId: response.batchId,
+      workflowId,
+    });
 
     // Close dialog after successful upload
     emit('close', {
       filesCount: selectedFiles.value.length,
       jobId: pendingJobId.value,
-      mode: uploadType.value === 'bulk-photos' ? 'temporal-bulk' : 'legacy-sse'
+      mode: uploadType.value === 'bulk-photos' ? 'temporal-bulk' : 'legacy-video'
     });
 
     // Show success modal - skip that for now
@@ -431,7 +363,6 @@ const closeUploadDialog = (jobId = null, resetUploadingState = true) => {
 
 watch(() => props.showUploadDialog, (isOpen) => {
   if (!isOpen) {
-    // Dialog closed - reset everything
     selectedFiles.value = []
     uploadProgress.value = 0
     uploadStatus.value = ''
@@ -439,7 +370,6 @@ watch(() => props.showUploadDialog, (isOpen) => {
     uploadedFiles.value = new Set()
     failedFiles.value = new Set()
     error.value = null
-    filesRejectedDueToLimit.value = false
   }
 })
 

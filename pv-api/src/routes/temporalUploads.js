@@ -14,7 +14,7 @@ const MetadataService = require("../services/metadata-service");
 // Use memory storage to handle the manual write to NFS
 const upload = multer({ storage: multer.memoryStorage() });
 
-module.exports = (temporalClient, config, { sendSSEEvent, persistProgress, getProgress } = {}) => {
+module.exports = (getTemporalClient, config, { sendSSEEvent, persistProgress, getProgress } = {}) => {
     const metadataService = new MetadataService(null);
 
     const toIsoStringOrNull = (value) => {
@@ -85,7 +85,7 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress, getPr
                             throw new Error('Temporal task queue is not configured');
                         }
 
-                        await temporalClient.workflow.start('processBatchImages', {
+                        await getTemporalClient().workflow.start('processBatchImages', {
                             taskQueue,
                             workflowId: `batch-${batchId}`,
                             args: [{
@@ -154,14 +154,14 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress, getPr
      * Status route to check on the workflow
      */
     router.get('/status/:workflowId', async (req, res) => {
-        if (!temporalClient) {
+        if (!getTemporalClient()) {
             return res.status(503).json({ error: "Temporal client not available" });
         }
         try {
             const requestStartedAt = Date.now();
             const workflowId = req.params.workflowId;
             debugBulkApi(`[status] Request started for workflowId=${workflowId}`);
-            const handle = temporalClient.workflow.getHandle(workflowId);
+            const handle = getTemporalClient().workflow.getHandle(workflowId);
             debugBulkApi(`[status] Calling describe() for workflowId=${workflowId}`);
             const description = await handle.describe();
             debugBulkApi(
@@ -264,7 +264,7 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress, getPr
      * - limit: max number of returned jobs (default 200, max 1000)
      */
     router.get('/jobs', async (req, res) => {
-        if (!temporalClient) {
+        if (!getTemporalClient()) {
             return res.status(503).json({ error: 'Temporal client not available' });
         }
 
@@ -300,7 +300,7 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress, getPr
             // debugBulkApi(`[jobs] Starting Temporal visibility scan (limit=${limit}, from=${fromIso || 'none'}, to=${toIso || 'none'})`);
 
             // Iterate visibility results and filter to bulk jobs by workflow id prefix.
-            for await (const execution of temporalClient.workflow.list()) {
+            for await (const execution of getTemporalClient().workflow.list()) {
                 scanned += 1;
 
                 if (Date.now() - lastProgressLogAt >= 5000) {
@@ -384,13 +384,13 @@ module.exports = (temporalClient, config, { sendSSEEvent, persistProgress, getPr
      * Calls the Temporal query handler registered in the worker as 'getProgress'.
      */
     router.get('/progress/:workflowId', async (req, res) => {
-        if (!temporalClient) {
+        if (!getTemporalClient()) {
             return res.status(503).json({ error: 'Temporal client not available' });
         }
         try {
             const { workflowId } = req.params;
             debugBulkApi(`[progress] Request started for workflowId=${workflowId}`);
-            const handle = temporalClient.workflow.getHandle(workflowId);
+            const handle = getTemporalClient().workflow.getHandle(workflowId);
             debugBulkApi(`[progress] Calling describe() and getProgress() for workflowId=${workflowId}`);
             const [description, progress] = await Promise.all([
                 handle.describe(),

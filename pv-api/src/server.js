@@ -61,6 +61,23 @@ async function initTemporal() {
   }
 }
 
+// Getter passed to routes so they always read the current client reference,
+// even after a reconnect.
+const getTemporalClient = () => temporalClient;
+
+// Reconnect loop — if Temporal was down at startup or drops later,
+// retry every 30 s so the routes recover without a pod restart.
+async function startTemporalReconnectLoop() {
+  setInterval(async () => {
+    if (temporalClient) return; // already connected
+    debugServer("Temporal reconnect attempt...");
+    await initTemporal();
+    if (temporalClient) {
+      debugServer("✓ Temporal Client reconnected");
+    }
+  }, 30000);
+}
+
 // Minio Client Configuration
 
 const { Client: MinioClient } = require("minio");
@@ -295,6 +312,7 @@ async function startServer() {
     // Initialize database connection
     let connectionPool = await initializeDatabase();
     await initTemporal();
+    startTemporalReconnectLoop();
 
     // Warm the Temporal gRPC channel to avoid cold-start timeouts in health checks
     try {
@@ -366,7 +384,6 @@ async function startServer() {
             ),
           ]);
           results.temporal = true;
-          app.use("/bulk", temporalRoutes(temporalClient, config, { sendSSEEvent, persistProgress, getProgress })); // pass getProgress to temporal routes
         }
       } catch (e) {
         debugServer("Dependency check: Temporal failed:", e.message || e);
@@ -416,6 +433,7 @@ async function startServer() {
       );
     }
 
+    app.use("/bulk", temporalRoutes(getTemporalClient, config, { sendSSEEvent, persistProgress, getProgress }));
     app.use("/", healthRoutes(minioClient, temporalClient));
 
     //debugServer(`[server.js] Database initialized successfully`);

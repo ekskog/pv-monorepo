@@ -11,7 +11,7 @@
       <div class="flex gap-2 mb-3">
         <button
           class="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:border-blue-500 hover:text-blue-500 transition"
-          @click="triggerUpload('photos')">
+          @click="triggerUpload('bulk-photos')">
           <i class="fas fa-layer-group text-base"></i> Photos
           <i class="fas fa-circle-info text-xs text-emerald-600"
             title="Follow progress on Monitor Tab."
@@ -23,7 +23,7 @@
         </button>
         <button
           class="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-600 text-sm font-medium hover:border-blue-500 hover:text-blue-500 transition"
-          @click="triggerUpload('bulk-photos')">
+          @click="triggerUpload('videos')">
           <i class="fas fa-video text-base"></i> Videos
         </button>
       </div>
@@ -278,6 +278,7 @@ async function uploadFiles() {
     // Build FormData
     const formData = new FormData();
     const isBulkUpload = uploadType.value === 'bulk-photos'
+    console.log('[MediaUpload] uploadType:', uploadType.value, '→ isBulkUpload:', isBulkUpload)
     const fieldName = isBulkUpload ? 'images' : 'files'
     selectedFiles.value.forEach((file) => {
       formData.append(fieldName, file);
@@ -442,8 +443,7 @@ watch(() => props.showUploadDialog, (isOpen) => {
   }
 })
 
-// Detect mobile (optional)
 onMounted(() => {
-  // You can add mobile-specific logic here if needed
+  console.log('[MediaUpload] version: 2026-04-13-temporal-only — Photos→bulk-photos, Videos→videos')
 })
 </script>

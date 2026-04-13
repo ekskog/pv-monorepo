@@ -79,7 +79,7 @@ module.exports = (getTemporalClient, config, { sendSSEEvent, persistProgress, ge
 
                 // 4. Trigger Temporal
                 // Verify client exists before calling
-                if (temporalClient) {
+                if (getTemporalClient()) {
                         const taskQueue = config.temporal?.taskQueue;
                         if (!taskQueue) {
                             throw new Error('Temporal task queue is not configured');
@@ -479,7 +479,7 @@ module.exports = (getTemporalClient, config, { sendSSEEvent, persistProgress, ge
             success: true, 
             message: "Route is active.",
             nfsPath: config.temporal?.nfsPath || '/nfs-storage',
-            temporalConnected: !!temporalClient
+            temporalConnected: !!getTemporalClient()
         });
     });
 

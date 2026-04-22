@@ -15,7 +15,9 @@ data:
   # UI Configuration
   APP_TITLE: "EKSKOG PHOTOS"
   APP_DESCRIPTION: "Secure Photo Gallery"
-  API_URL: "https://vault-api.ekskog.net"
+  # Use the in-cluster service DNS so services inside Kubernetes reach the API internally
+  # Service port is exposed as port 80 in the Service manifest
+  API_URL: "http://pv-api-service.pv.svc.cluster.local"
   
   # Feature Flags
   ENABLE_USER_MANAGEMENT: "true"

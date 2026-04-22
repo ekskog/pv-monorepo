@@ -7,6 +7,9 @@ const path = require('path');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
+// API base (prefer environment variable; default to in-cluster DNS)
+const API_BASE_URL = process.env.API_BASE_URL || 'http://pv-api-service.pv.svc.cluster.local';
+
 // Serve static HTML page
 app.use(express.static('public'));
 
@@ -35,7 +38,7 @@ app.post('/upload', upload.array('images'), async (req, res) => {
     });
 
     // Upload to pv
-    const response = await fetch(`https://vault-api.ekskog.net/upload/${directory}`, {
+    const response = await fetch(`${API_BASE_URL}/upload/${directory}`, {
       method: 'POST',
       body: formData,
       headers: formData.getHeaders()

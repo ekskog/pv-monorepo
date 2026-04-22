@@ -17,7 +17,7 @@ class ConfigService {
     })();
 
     const baseConfig = {
-      apiUrl: env.API_URL || import.meta.env.VITE_API_URL || 'https://vault-api.ekskog.net',
+      apiUrl: env.API_URL || import.meta.env.VITE_API_URL || 'http://pv-api-service.pv.svc.cluster.local',
       appTitle: env.APP_TITLE || import.meta.env.VITE_APP_TITLE || 'EKSKOG PHOTOS',
       appDescription: env.APP_DESCRIPTION || import.meta.env.VITE_APP_DESCRIPTION || 'Secure Photo Gallery',
       enableUserManagement: (env.ENABLE_USER_MANAGEMENT || import.meta.env.VITE_ENABLE_USER_MANAGEMENT) === 'true',
@@ -85,7 +85,7 @@ class ConfigService {
       localStorage.removeItem('pv_config');
       // Rebuild config from environment
       const env = window.__ENV__ || {};
-      this.config.apiUrl = env.API_URL || import.meta.env.VITE_API_URL || 'https://vault-api.ekskog.net';
+      this.config.apiUrl = env.API_URL || import.meta.env.VITE_API_URL || 'http://pv-api-service.pv.svc.cluster.local';
       this.config.appTitle = env.APP_TITLE || import.meta.env.VITE_APP_TITLE || 'EKSKOG PHOTOS';
       this.config.appDescription = env.APP_DESCRIPTION || import.meta.env.VITE_APP_DESCRIPTION || 'Secure Photo Gallery';
       this.config.turnstileSiteKey = env.TURNSTILE_SITE_KEY || import.meta.env.VITE_TURNSTILE_SITE_KEY || '';

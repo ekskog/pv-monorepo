@@ -1,21 +1,18 @@
-FROM node:22-alpine AS production
+FROM node:22-bookworm-slim AS production
 
-RUN apk add --no-cache \
-    vips \
-    libc6-compat \
-    perl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libvips \
+    perl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY --chown=1000:1000 package*.json ./
+COPY --chown=node:node package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --chown=1000:1000 src/ ./src/
+COPY --chown=node:node src/ ./src/
 
-RUN addgroup -g 1000 -S nodejs && \
-    adduser -S pv -u 1000 -G nodejs
-
-USER pv
+USER node
 
 EXPOSE 3000
 

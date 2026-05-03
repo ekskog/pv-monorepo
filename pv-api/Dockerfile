@@ -7,13 +7,13 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY --chown=1001:1001 package*.json ./
+COPY --chown=1000:1000 package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --chown=1001:1001 src/ ./src/
+COPY --chown=1000:1000 src/ ./src/
 
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S pv -u 1001 -G nodejs
+RUN addgroup -g 1000 -S nodejs && \
+    adduser -S pv -u 1000 -G nodejs
 
 USER pv
 

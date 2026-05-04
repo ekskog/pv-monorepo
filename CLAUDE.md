@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**PhotoVault (pv)** is a Kubernetes-native photo gallery and storage platform. It handles photo uploads, HEIC/JPEG to AVIF conversion, EXIF metadata extraction, location-based tagging, and album management. All services run in a self-hosted K8s cluster.
+**PhotoVault (pv)** is a Kubernetes-native photo gallery and storage platform. It handles photo uploads, HEIC/JPEG to AVIF conversion, EXIF metadata extraction, location-based tagging, and album management. All services run in a self-hosted K3s cluster.
 
 ---
 

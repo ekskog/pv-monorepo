@@ -32,6 +32,8 @@ module.exports = (getTemporalClient, config, { sendSSEEvent, persistProgress, ge
         const files = req.files;
         const batchId = nanoid();
 
+        debugBulkApi(`New bulk upload request received — folder: "${folder}", batchId: ${batchId}, files: ${files?.length ?? 0}`);
+
         // 1. Immediate Validation (Synchronous)
         if (!files || files.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });

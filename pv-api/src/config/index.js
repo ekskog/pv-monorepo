@@ -1,6 +1,7 @@
 // config/index.js
 require("dotenv").config();
-
+const debug = require("debug");
+const debugConfig = debug("pv:config");
 const config = {
   // Server Configuration
   server: {
@@ -126,7 +127,7 @@ const validateConfig = () => {
   }
 };
 
-console.log("Configuration loaded:", {
+debugConfig("Configuration loaded:", {
   database: {
     host: config.database.host,
     port: config.database.port,

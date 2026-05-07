@@ -61,6 +61,14 @@ const config = {
     ],
   },
 
+  // imgproxy Configuration
+  imgproxy: {
+    // Public base URL of the imgproxy instance (e.g. "https://img.ekskog.net").
+    // When set, the album listing returns a thumbnailUrl (400px wide) per photo
+    // that the grid uses instead of the full-resolution image.
+    url: process.env.IMGPROXY_URL || null,
+  },
+
   // AVIF Converter Configuration
   converter: {
     url: process.env.AVIF_CONVERTER_URL,

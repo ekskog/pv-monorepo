@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: imgproxy-config
+  namespace: pv
+data:
+  # S3 / MinIO source
+  IMGPROXY_USE_S3: "true"
+  IMGPROXY_S3_ENDPOINT: "http://mjolnir:9000"
+  IMGPROXY_S3_FORCE_PATH_STYLE: "true"
+  AWS_REGION: "us-east-1"
+
+  # Only allow images from our own MinIO bucket — blocks hotlinking to arbitrary URLs
+  IMGPROXY_ALLOWED_SOURCES: "s3://"
+
+  # Performance
+  IMGPROXY_WORKERS: "10"
+  IMGPROXY_MAX_CLIENTS: "20"
+  IMGPROXY_READ_REQUEST_TIMEOUT: "30"
+  IMGPROXY_TIMEOUT: "30"
+
+  # Cache headers sent to the browser
+  IMGPROXY_TTL: "86400"
+
+  # Quality for re-encoded output (auto-format: AVIF for browsers that support it)
+  IMGPROXY_QUALITY: "75"
+  IMGPROXY_AVIF_SPEED: "8"

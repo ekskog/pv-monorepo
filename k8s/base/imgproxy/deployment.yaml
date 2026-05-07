@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pv-imgproxy
+  namespace: pv
+  labels:
+    app: pv-imgproxy
+spec:
+  replicas: 1
+  revisionHistoryLimit: 0
+  selector:
+    matchLabels:
+      app: pv-imgproxy
+  template:
+    metadata:
+      labels:
+        app: pv-imgproxy
+    spec:
+      hostAliases:
+      - ip: "192.168.1.8"
+        hostnames:
+        - "mjolnir"
+      containers:
+      - name: imgproxy
+        image: darthsim/imgproxy:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        - configMapRef:
+            name: imgproxy-config
+        - secretRef:
+            name: imgproxy-secret
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

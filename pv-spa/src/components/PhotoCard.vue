@@ -125,11 +125,13 @@ const formatPhotoGPS = (photo) => {
 };
 
 const getPhoto = (photo) => {
+  // Full-resolution URL for the lightbox
   return photo.presignedUrl || apiService.getObject(props.albumName, photo.name);
 };
 
 const getOptimizedPhotoUrl = (photo) => {
-  return photo.presignedUrl || apiService.getObject(props.albumName, photo.name);
+  // Thumbnail for the grid — falls back to full-res if imgproxy not configured
+  return photo.thumbnailUrl || photo.presignedUrl || apiService.getObject(props.albumName, photo.name);
 };
 
 

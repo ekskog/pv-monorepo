@@ -284,6 +284,13 @@ const getPhotos = (minioClient, publicMinioClient) => async (req, res) => {
         );
       }
 
+      let thumbnailUrl = null;
+      if (config.imgproxy.url) {
+        const source = `s3://${config.minio.bucketName}/${obj.name}`;
+        const encoded = Buffer.from(source).toString("base64url");
+        thumbnailUrl = `${config.imgproxy.url}/insecure/rs:fit:400:0/${encoded}`;
+      }
+
       objects.push({
         name: obj.name,
         size: obj.size,
@@ -291,6 +298,7 @@ const getPhotos = (minioClient, publicMinioClient) => async (req, res) => {
         etag: obj.etag,
         type: "file",
         presignedUrl,
+        thumbnailUrl,
       });
     }
 

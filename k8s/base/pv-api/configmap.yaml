@@ -20,6 +20,7 @@ data:
   MINIO_USE_SSL: "false"
   MINIO_BUCKET_NAME: "photovault"
   MINIO_PUBLIC_URL: "https://objects.ekskog.net"
+  IMGPROXY_URL: "https://img.ekskog.net"
 
   # Temporal Configuration
   # This points to the Temporal Frontend service in your cluster

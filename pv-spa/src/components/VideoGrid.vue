@@ -140,7 +140,7 @@ watch(() => props.videos, () => {
 
 // Helper methods
 const getVideoUrl = (video) => {
-  return apiService.getObject(props.albumName, video.name)
+  return video.presignedUrl || apiService.getObject(props.albumName, video.name)
 }
 
 const getVideoDisplayName = (filename) => {

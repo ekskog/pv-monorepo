@@ -19,6 +19,7 @@ data:
   MINIO_PORT: "9000"
   MINIO_USE_SSL: "false"
   MINIO_BUCKET_NAME: "photovault"
+  MINIO_PUBLIC_URL: "https://objects.ekskog.net"
 
   # Temporal Configuration
   # This points to the Temporal Frontend service in your cluster

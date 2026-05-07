@@ -180,12 +180,11 @@ const handleImageError = (event) => {
 }
 
 const getPhotoUrl = (photo) => {
-  let url =  apiService.getObject(props.albumName, photo.name);
-  return url;
+  return photo.presignedUrl || apiService.getObject(props.albumName, photo.name);
 };
 
 const getPhoto = (photo) => {
-  return apiService.getObject(props.albumName, photo.name);
+  return photo.presignedUrl || apiService.getObject(props.albumName, photo.name);
 };
 
 const getPhotoDisplayName = (filename) => {

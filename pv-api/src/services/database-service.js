@@ -342,7 +342,7 @@ class Database {
     const connection = await this.pool.getConnection();
     try {
       const [rows] = await connection.execute(
-        "SELECT name, slug, path, description, created_at, updated_at FROM albums ORDER BY created_at DESC"
+        "SELECT name, slug, path, description, counter, created_at, updated_at FROM albums ORDER BY created_at DESC"
       );
       return rows;
     } finally {

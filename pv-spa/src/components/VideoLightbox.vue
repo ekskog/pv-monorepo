@@ -251,7 +251,7 @@ const getVideoUrl = (video) => {
     console.warn('[VideoLightbox] getVideoUrl called with no video')
     return ''
   }
-  const url = apiService.getObject(props.albumName, video.name)
+  const url = video.presignedUrl || apiService.getObject(props.albumName, video.name)
   console.log('[VideoLightbox] Generated video URL:', url, 'for video:', video.name)
   return url
 }

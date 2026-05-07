@@ -52,31 +52,14 @@ function normalizeFolderPath(input) {
 const getAlbums = (minioClient) => async (req, res) => {
   try {
     const albums = await database.getAllAlbums();
-
-    // Map over albums and fetch object counts in MinIO
-    const albumMetadata = await Promise.all(
-      albums.map(async (album) => {
-        const fileCount =
-          //(await countObjectsInPath(minioClient, config.minio.bucketName, album.path)) - 1;
-          (await countObjectsInPath(minioClient, config.minio.bucketName, album.name + "/")) - 1;
-
-        return {
-          ...album, // keep name, slug, path, description, etc.
-          fileCount,
-        };
-      })
-    );
-
-    res.json({
-      success: true,
-      albums: albumMetadata,
-    });
+    const albumMetadata = albums.map((album) => ({
+      ...album,
+      fileCount: album.counter || 0,
+    }));
+    res.json({ success: true, albums: albumMetadata });
   } catch (error) {
     debugAlbum("Error:", error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
@@ -255,7 +238,7 @@ const deleteAlbumFolder = (minioClient) => async (req, res) => {
 };
 
 // GET /albums/:albumName/ - Get photos for album by name
-const getPhotos = (minioClient) => async (req, res) => {
+const getPhotos = (minioClient, publicMinioClient) => async (req, res) => {
   try {
     const { name } = req.params;
 
@@ -279,6 +262,8 @@ const getPhotos = (minioClient) => async (req, res) => {
       true
     ); // recursive = true to get all files
 
+    const presignedExpiry = 3600; // 1 hour
+
     for await (const obj of stream) {
       // Skip metadata JSON files
       if (obj.name.endsWith(".json") && obj.name.includes("/")) {
@@ -290,15 +275,23 @@ const getPhotos = (minioClient) => async (req, res) => {
         }
       }
 
-      let result = {
+      let presignedUrl = null;
+      if (publicMinioClient) {
+        presignedUrl = await publicMinioClient.presignedGetObject(
+          config.minio.bucketName,
+          obj.name,
+          presignedExpiry
+        );
+      }
+
+      objects.push({
         name: obj.name,
         size: obj.size,
         lastModified: obj.lastModified,
         etag: obj.etag,
         type: "file",
-      };
-
-      objects.push(result);
+        presignedUrl,
+      });
     }
 
 
@@ -340,12 +333,15 @@ const getObject = (minioClient) => async (req, res) => {
     );
 
     // Set response headers
-    res.setHeader(
-      "Content-Type",
-      stat.metaData["content-type"] || "application/octet-stream"
-    );
+    const contentType = stat.metaData["content-type"] || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
     res.setHeader("Content-Length", stat.size);
     res.setHeader("ETag", stat.etag);
+    if (contentType.startsWith("image/") || contentType.startsWith("video/")) {
+      res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+    } else {
+      res.setHeader("Cache-Control", "no-cache");
+    }
 
     // Stream object to response
     const stream = await minioClient.getObject(
@@ -477,6 +473,9 @@ const deleteObjects = (minioClient) => async (req, res) => {
       // If metadata file doesn't exist or can't be read, log it but don't fail the deletion
       //debugUpload(`[albums.js] Metadata update failed (non-critical): ${metadataError.message}`);
     }
+
+    // Decrement album file counter
+    database.incrementFileCounter(-1, folderPath).catch(() => {});
 
     res.status(200).json({
       success: true,
@@ -788,10 +787,10 @@ const renameAlbum = (minioClient) => async (req, res) => {
 };
 
 // Consolidate the module.exports into a single export
-module.exports = (minioClient, { pendingJobs, processFilesInBackground }) => {
+module.exports = (minioClient, { pendingJobs, processFilesInBackground, publicMinioClient = null }) => {
   router.get("/albums", getAlbums(minioClient));
-  router.get("/album/:name", getPhotos(minioClient));
-  router.get("/objects/:name", getPhotos(minioClient));
+  router.get("/album/:name", getPhotos(minioClient, publicMinioClient));
+  router.get("/objects/:name", getPhotos(minioClient, publicMinioClient));
   router.get("/albums/:name/object/:object", getObject(minioClient));
   router.post(
     "/buckets/:bucketName/upload",

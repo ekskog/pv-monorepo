@@ -97,6 +97,27 @@ try {
   );
   minioClient = null;
 }
+
+// Separate client whose endpoint is the public hostname so that presigned URLs
+// are signed with the correct host (AWS SigV4 includes Host in the HMAC).
+let publicMinioClient = null;
+if (config.minio.publicUrl) {
+  try {
+    const pub = new URL(config.minio.publicUrl);
+    const isHttps = pub.protocol === "https:";
+    const port = pub.port ? parseInt(pub.port) : (isHttps ? 443 : 80);
+    publicMinioClient = new MinioClient({
+      endPoint: pub.hostname,
+      port,
+      useSSL: isHttps,
+      accessKey: config.minio.accessKey,
+      secretKey: config.minio.secretKey,
+    });
+    debugServer(`✓ Public MinIO signing client → ${config.minio.publicUrl}`);
+  } catch (err) {
+    debugServer(`Public MinIO client init error: ${err.message}`);
+  }
+}
 const UploadService = require("./services/upload-service");
 const uploadService = new UploadService(minioClient);
 
@@ -344,7 +365,7 @@ async function startServer() {
           // mount routes that depend on MinIO only if the bucket is accessible
           app.use(
             "/",
-            albumRoutes(minioClient, { pendingJobs, processFilesInBackground }),
+            albumRoutes(minioClient, { pendingJobs, processFilesInBackground, publicMinioClient }),
           );
           app.use("/", statRoutes(minioClient));
 

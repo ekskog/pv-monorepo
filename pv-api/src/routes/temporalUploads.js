@@ -5,6 +5,8 @@ const debug = require("debug");
 const debugTemporal = debug("pv:server:temporal");
 const debugBulkApi = debug("pv:server:bulk");
 
+const database = require("../services/database-service");
+
 const multer = require("multer");
 const { nanoid } = require("nanoid");
 const mime = require('mime-types');
@@ -143,6 +145,13 @@ module.exports = (getTemporalClient, config, { sendSSEEvent, persistProgress, ge
             // Persist if helper provided
             if (typeof persistProgress === 'function') {
                 persistProgress(jobId, { progress: body });
+            }
+
+            // When the batch completes, credit the successful count to the album counter
+            if (body.state === 'complete' && body.albumName && body.successful > 0) {
+                database.incrementFileCounter(body.successful, body.albumName).catch((err) => {
+                    debugBulkApi('[internal/progress] Failed to update album counter:', err.message);
+                });
             }
 
             return res.json({ success: true });

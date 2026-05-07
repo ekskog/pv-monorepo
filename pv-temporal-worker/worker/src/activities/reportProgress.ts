@@ -8,6 +8,7 @@ export async function reportProgress(progress: BatchProgressState | any): Promis
   const body = {
     workflowId: (progress && progress.batchId) || progress.workflowId || undefined,
     batchId: progress.batchId || undefined,
+    albumName: progress.albumName || null,
     processed: progress.processed,
     totalRequested: progress.totalRequested,
     successful: progress.successful,

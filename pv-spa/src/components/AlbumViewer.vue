@@ -412,7 +412,7 @@ const loadAlbumMetadata = async (albumName) => {
 
 const getPhotoDisplayName = (filename) => filename.split("/").pop() || filename;
 const getPhotoUrl = (photo) =>
-  apiService.getObject(props.albumName, photo.name);
+  photo.presignedUrl || apiService.getObject(props.albumName, photo.name);
 const preloadImage = (src) =>
   new Promise((resolve, reject) => {
     const img = new Image();

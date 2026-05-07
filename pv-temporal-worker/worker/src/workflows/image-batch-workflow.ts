@@ -47,6 +47,7 @@ export interface BatchProgressState {
   lastSuccessFile: string | null;
   lastFailedFile: string | null;
   error: string | null;
+  albumName: string | null;
 }
 
 // Query definition — exported so the API client can reference the same name
@@ -83,6 +84,7 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     lastSuccessFile: null,
     lastFailedFile: null,
     error: null,
+    albumName: albumName ?? null,
   };
 
   // Register query handler — returns a snapshot of progressState at any point

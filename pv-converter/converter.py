@@ -4,6 +4,7 @@ from pathlib import Path
 import psutil
 import os
 import gc
+import io
 import logging
 
 import pillow_heif
@@ -134,6 +135,18 @@ def _convert_jpeg_to_avif(in_p: Path, out_p: Path):
     except Exception as e:
         logger.error(f"JPEG conversion error: {e}")
         raise
+
+
+def generate_thumbnail_webp(image_bytes: bytes, max_width: int = 400) -> bytes:
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        if img.mode not in ('RGB', 'L'):
+            img = img.convert('RGB')
+        if img.width > max_width:
+            ratio = max_width / img.width
+            img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='WEBP', quality=75)
+        return buf.getvalue()
 
 
 def cleanup_after_request():

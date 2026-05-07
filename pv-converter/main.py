@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import Response
-from converter import convert_to_avif, cleanup_after_request
+from converter import convert_to_avif, generate_thumbnail_webp, cleanup_after_request
 from minio import Minio
 import psutil
 import os
@@ -104,14 +104,21 @@ async def convert_image(
                 detail=f"File too large ({size_mb:.1f}MB). Max allowed: {MAX_INPUT_BYTES // 1024 // 1024}MB",
             )
 
-        # 4. Convert
+        # 4. Convert to AVIF
         avif_data = convert_to_avif(image_bytes, file_type)
+
+        # 4b. Generate WebP thumbnail from source before freeing source bytes
+        try:
+            thumb_data = generate_thumbnail_webp(image_bytes)
+        except Exception as e:
+            logger.warning(f"[API] Thumbnail generation failed for {image.filename}: {e}")
+            thumb_data = None
 
         # 5. Free source bytes immediately — avif_data is all we need now
         del image_bytes
         gc.collect()
 
-        # 6. Stream result to MinIO
+        # 6. Stream AVIF to MinIO
         minio_client.put_object(
             bucket,
             object_name,
@@ -119,6 +126,22 @@ async def convert_image(
             length=len(avif_data),
             content_type="image/avif",
         )
+
+        # 7. Upload WebP thumbnail
+        if thumb_data:
+            parts = object_name.split("/")
+            thumb_object_name = "/".join(parts[:-1]) + "/thumbs/" + parts[-1].replace(".avif", ".webp")
+            try:
+                minio_client.put_object(
+                    bucket,
+                    thumb_object_name,
+                    io.BytesIO(thumb_data),
+                    length=len(thumb_data),
+                    content_type="image/webp",
+                )
+                logger.info(f"[API] Thumbnail uploaded: {thumb_object_name}")
+            except Exception as e:
+                logger.warning(f"[API] Thumbnail upload failed: {e}")
 
         duration = round(time.time() - start_time, 2)
         avif_mb = round(len(avif_data) / 1024 / 1024, 3)

@@ -220,7 +220,7 @@ const { jobs: trackedUploads, registerLegacyUpload, registerBulkUpload } = useUp
 const handledAlbumCompletions = new Set();
 
 // NEW: Sort order state
-const sortOrder = ref('chronological'); // 'chronological' or 'reverse'
+const sortOrder = ref('reverse'); // 'chronological' or 'reverse'
 
 // NEW: Media type state (images or videos)
 const mediaType = ref('images'); // 'images' or 'videos'

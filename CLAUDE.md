@@ -287,4 +287,6 @@ The `albums.counter` column in MariaDB caches the photo count per album and is u
 
 **Known limitation:** Re-uploading the same files overwrites the MinIO objects silently but still increments the counter, causing drift. If counters look wrong, run the audit+fix script (counts actual `.avif/.jpg/.mp4` objects in MinIO per album prefix and resets the DB counter to match).
 
+**Known bug (TODO):** Albums created via the SPA show `0 photos` in the album list even after photos are uploaded and visible inside the album. The counter is not being incremented correctly for at least some upload paths. Needs investigation — check whether the upload path used (traditional vs bulk) is correctly incrementing `albums.counter` in MariaDB after conversion completes.
+
 **Do not** count objects from the per-album metadata JSON (`<folder>/<folder>.json`) to derive the counter — the JSON may contain entries for files that no longer exist in MinIO, or for original files that were converted and replaced. Count actual MinIO objects instead.

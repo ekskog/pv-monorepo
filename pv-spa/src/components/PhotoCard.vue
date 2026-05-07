@@ -7,9 +7,9 @@
       <img
         :src="getOptimizedPhotoUrl(photo)"
         :alt="photo.name"
-        @error="$emit('imageError', $event)"
-        @load="$emit('imageLoad', $event)"
-        @loadstart="$emit('imageLoadStart', $event)"
+        @error="handleImageError"
+        @load="handleImageLoad"
+        @loadstart="handleImageLoadStart"
         class="w-full h-full object-cover transition-opacity duration-300"
         loading="lazy"
         :data-full-src="getPhoto(photo)"
@@ -137,9 +137,22 @@ const getOptimizedPhotoUrl = (photo) => {
 
 const handleImageLoad = (event) => {
   emit('imageLoad', event)
+  // Prefetch full-res so lightbox opens instantly
+  const fullSrc = getPhoto(props.photo)
+  if (fullSrc && event.target.src !== fullSrc) {
+    const link = document.createElement('link')
+    link.rel = 'prefetch'
+    link.href = fullSrc
+    document.head.appendChild(link)
+  }
 }
 
 const handleImageError = (event) => {
+  // Thumbnail missing or not yet generated — fall back to full-res
+  const fullSrc = getPhoto(props.photo)
+  if (fullSrc && event.target.src !== fullSrc) {
+    event.target.src = fullSrc
+  }
   emit('imageError', event)
 }
 

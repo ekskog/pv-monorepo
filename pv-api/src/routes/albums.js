@@ -265,6 +265,9 @@ const getPhotos = (minioClient, publicMinioClient) => async (req, res) => {
     const presignedExpiry = 3600; // 1 hour
 
     for await (const obj of stream) {
+      // Skip thumbnails folder
+      if (obj.name.includes("/thumbs/")) continue;
+
       // Skip metadata JSON files
       if (obj.name.endsWith(".json") && obj.name.includes("/")) {
         const pathParts = obj.name.split("/");
@@ -285,10 +288,17 @@ const getPhotos = (minioClient, publicMinioClient) => async (req, res) => {
       }
 
       let thumbnailUrl = null;
-      if (config.imgproxy.url) {
-        const source = `s3://${config.minio.bucketName}/${obj.name}`;
-        const encoded = Buffer.from(source).toString("base64url");
-        thumbnailUrl = `${config.imgproxy.url}/insecure/rs:fit:400:0/${encoded}`;
+      if (publicMinioClient) {
+        const parts = obj.name.split("/");
+        const filename = parts[parts.length - 1];
+        const albumPrefix = parts.slice(0, -1).join("/");
+        const thumbFilename = filename.replace(/\.avif$/i, ".webp");
+        const thumbObjectName = `${albumPrefix}/thumbs/${thumbFilename}`;
+        thumbnailUrl = await publicMinioClient.presignedGetObject(
+          config.minio.bucketName,
+          thumbObjectName,
+          presignedExpiry
+        );
       }
 
       objects.push({

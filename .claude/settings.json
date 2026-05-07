@@ -4,7 +4,9 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(curl -sI https://photos.ekskog.me/env-config.js)"
+      "Bash(curl -sI https://photos.ekskog.me/env-config.js)",
+      "Bash(curl -sI \"https://photos.ekskog.me/env-config.js?v=2\")",
+      "Bash(MINIO_ACCESS_KEY=lucarv MINIO_SECRET_KEY=lucaPWD4MinI0-MJR node generate-thumbs.js --album sicilia)"
     ]
   }
 }

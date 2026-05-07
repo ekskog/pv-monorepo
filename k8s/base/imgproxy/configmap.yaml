@@ -13,6 +13,9 @@ data:
   # Only allow images from our own MinIO bucket — blocks hotlinking to arbitrary URLs
   IMGPROXY_ALLOWED_SOURCES: "s3://"
 
+  # CORS — allow the SPA to fetch imgproxy responses directly
+  IMGPROXY_ALLOW_ORIGIN: "https://photos.ekskog.me"
+
   # Performance
   IMGPROXY_WORKERS: "4"
   IMGPROXY_MAX_CLIENTS: "8"

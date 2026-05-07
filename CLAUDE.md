@@ -233,3 +233,58 @@ Minimal test coverage today:
 - **pv-temporal-worker**: TypeScript strict mode
 - **pv-converter / pv-metadata**: Python 3.11, async FastAPI handlers
 - No formal test suite — rely on integration testing against the running cluster
+
+---
+
+## SPA Runtime Configuration
+
+The SPA is a static nginx-served Vue app. Runtime config (API URL, feature flags) is injected at container startup by an entrypoint script that reads env vars from the ConfigMap and writes `/usr/share/nginx/html/env-config.js`, which sets `window.__ENV__`.
+
+**Critical:** `env-config.js` must never be cached. nginx is configured with `Cache-Control: no-store` for that path. If `env-config.js` gets stale (e.g. after a pod restart with a configmap change), Cloudflare may serve the old version — purge `https://photos.ekskog.me/env-config.js` from the Cloudflare cache.
+
+The correct `API_URL` in `k8s/base/pv-spa/configmap.yaml` is **`https://vault-api.ekskog.net`** — the public API hostname. Do not use the internal K8s DNS name (`http://pv-api-service.pv.svc.cluster.local`): browsers cannot resolve it and it triggers mixed-content blocking on HTTPS pages.
+
+The SPA's nginx (`pv-spa/nginx.conf`) also proxies API paths (`/auth`, `/albums`, `/objects`, etc.) to `http://pv-api-service` internally — this is a secondary path used for same-origin requests and does not affect how the runtime config URL is set.
+
+---
+
+## Public Endpoints and Networking
+
+| Hostname | What it points to | Via |
+|---|---|---|
+| `photos.ekskog.me` | pv-spa nginx (port 80) | Cloudflare Tunnel |
+| `vault-api.ekskog.net` | pv-api (port 3000) | Cloudflare Tunnel |
+| `objects.ekskog.net` | MinIO (port 9000) | Cloudflare Proxy (orange cloud) |
+| `img.ekskog.net` | imgproxy (port 8080) | Cloudflare Tunnel |
+
+All Cloudflare Tunnel routes are configured in the **Cloudflare dashboard** (not in K8s). The cloudflared pod runs in the `webapps` namespace and connects outbound to Cloudflare. It resolves backend services by K8s cluster DNS.
+
+**MinIO presigned URLs** must be signed with the *public* hostname (`objects.ekskog.net`) as the endpoint. `pv-api` maintains a separate `publicMinioClient` for this purpose (`server.js`). The standard `minioClient` uses the internal address and must not be used for generating presigned URLs served to browsers.
+
+---
+
+## imgproxy
+
+imgproxy runs in the `pv` namespace (`k8s/base/imgproxy/`). It fetches source images from MinIO via S3 protocol and resizes them on the fly.
+
+**Key operational facts:**
+- AVIF decoding + resizing is CPU and memory intensive. With 4 workers, the memory limit must be at least **1.5Gi** to avoid OOMKill under load.
+- imgproxy must send `IMGPROXY_ALLOW_ORIGIN: "https://photos.ekskog.me"` for the SPA to be able to `fetch()` thumbnail URLs (CORS).
+- `env-config.js` in pv-spa sets `IMGPROXY_URL` which pv-api reads to construct `thumbnailUrl` fields. If `IMGPROXY_URL` is unset, thumbnailUrl is null and the SPA falls back to the presigned URL.
+- Source URLs passed to imgproxy are `s3://<bucket>/<object>`, base64url-encoded in the path: `${IMGPROXY_URL}/insecure/rs:fit:400:0/<encoded>`.
+- imgproxy connects to MinIO using the internal hostname `mjolnir` via a `hostAliases` entry in the deployment (maps `mjolnir` → `192.168.1.8`).
+
+---
+
+## Album Counter (`albums.counter`)
+
+The `albums.counter` column in MariaDB caches the photo count per album and is used by `GET /albums` to avoid N MinIO list calls.
+
+**How it is maintained:**
+- Traditional upload (`server.js`): incremented by the number of successfully processed files after the upload completes.
+- Bulk upload (`temporalUploads.js`): incremented when a `reportProgress` POST arrives with `state === 'complete'`.
+- Delete (`albums.js`): decremented by 1 per deleted object.
+
+**Known limitation:** Re-uploading the same files overwrites the MinIO objects silently but still increments the counter, causing drift. If counters look wrong, run the audit+fix script (counts actual `.avif/.jpg/.mp4` objects in MinIO per album prefix and resets the DB counter to match).
+
+**Do not** count objects from the per-album metadata JSON (`<folder>/<folder>.json`) to derive the counter — the JSON may contain entries for files that no longer exist in MinIO, or for original files that were converted and replaced. Count actual MinIO objects instead.

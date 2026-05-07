@@ -8,6 +8,9 @@ export interface MetadataResult {
   filename: string;
   success: boolean;
   objectName: string;
+  metrics: {
+    metadataTimeMs: number | null;
+  };
 }
 
 /**

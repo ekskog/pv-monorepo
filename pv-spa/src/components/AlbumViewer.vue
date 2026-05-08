@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-6xl mx-auto p-8">
+  <div class="py-2 sm:py-4">
     <!-- Use the new AlbumHeader component -->
     <AlbumHeader
       :album-name="albumName"

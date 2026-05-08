@@ -2,7 +2,7 @@
   <div class="w-full">
     <!-- Photo Grid -->
     <div
-      class="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1 sm:gap-2 md:gap-4 transform-gpu"
+      class="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1 sm:gap-2 transform-gpu"
     >
       <PhotoCard
         v-for="photo in displayedPhotos"

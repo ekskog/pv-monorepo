@@ -17,7 +17,7 @@
     />
 
     <!-- Main content -->
-    <main class="px-6 py-8 max-w-screen-xl mx-auto">
+    <main class="px-2 sm:px-4 py-4 sm:py-6 max-w-screen-xl mx-auto">
       <Home v-if="currentView === 'home'" @navigate="handleNavigation" />
       <Albums
         v-else-if="currentView === 'albums'"

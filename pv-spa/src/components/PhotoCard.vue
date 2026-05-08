@@ -148,11 +148,13 @@ const handleImageLoad = (event) => {
 }
 
 const handleImageError = (event) => {
-  // Thumbnail missing or not yet generated — fall back to full-res
   const fullSrc = getPhoto(props.photo)
   if (fullSrc && event.target.src !== fullSrc) {
+    // Thumbnail failed — silently fall back to full-res, don't tell parent yet
     event.target.src = fullSrc
+    return
   }
+  // Full-res also failed — let parent show the error placeholder
   emit('imageError', event)
 }
 

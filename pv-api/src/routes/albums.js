@@ -492,6 +492,11 @@ const deleteObjects = (minioClient) => async (req, res) => {
       //debugUpload(`[albums.js] Metadata update failed (non-critical): ${metadataError.message}`);
     }
 
+    // Delete the corresponding WebP thumbnail if it exists
+    const thumbName = objectName.replace(/\.avif$/i, '.webp');
+    const thumbPath = `${folderPath}/thumbs/${thumbName}`;
+    minioClient.removeObject(config.minio.bucketName, thumbPath).catch(() => {});
+
     // Decrement album file counter
     database.incrementFileCounter(-1, folderPath).catch(() => {});
 

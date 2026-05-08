@@ -20,11 +20,11 @@
       />
     </div>
 
-    <!-- Infinite scroll sentinel -->
+    <!-- Infinite scroll sentinel — always in DOM so observer ref stays stable -->
     <div
       ref="scrollTrigger"
       class="h-12 flex items-center justify-center"
-      v-if="hasMorePhotos"
+      v-show="hasMorePhotos"
     >
       <svg v-if="isLoading" class="animate-spin h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -101,10 +101,6 @@ const teardownObserver = () => {
 onMounted(setupObserver)
 onUnmounted(teardownObserver)
 
-watch(hasMorePhotos, (val) => {
-  if (val) setupObserver()
-  else teardownObserver()
-})
 
 defineExpose({ loadMore })
 </script>

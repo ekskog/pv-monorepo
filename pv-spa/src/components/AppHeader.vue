@@ -203,12 +203,36 @@ const mobileSearchQuery = ref("");ible on md and below) -->
     <!-- Right: Status + User Menu -->
     <div class="flex items-center gap-4">
       <!-- Status Dot (always visible) -->
-      <div
-        :class="statusDotClass"
-        :title="healthTooltip"
-        class="w-3 h-3 rounded-full flex items-center justify-center text-white text-[0.5rem] leading-none"
-      >
-        <i :class="statusIconClass"></i>
+      <div class="relative" ref="healthDotRef">
+        <button
+          :class="statusDotClass"
+          :title="healthTooltip"
+          class="w-3 h-3 rounded-full flex items-center justify-center text-white text-[0.5rem] leading-none cursor-pointer focus:outline-none"
+          @click.stop="toggleHealthPopover"
+        >
+          <i :class="statusIconClass"></i>
+        </button>
+
+        <!-- Health Popover -->
+        <div
+          v-if="showHealthPopover"
+          class="absolute top-full right-0 mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-3"
+          @click.stop
+        >
+          <div class="text-xs font-semibold text-gray-700 mb-2">Dependencies</div>
+          <div
+            v-for="(up, name) in serviceList"
+            :key="name"
+            class="flex items-center justify-between py-0.5"
+          >
+            <span class="text-xs text-gray-600 capitalize">{{ name }}</span>
+            <span :class="up ? 'text-green-500' : 'text-red-500'" class="text-xs font-medium flex items-center gap-1">
+              <i :class="up ? 'fas fa-check-circle' : 'fas fa-times-circle'"></i>
+              {{ up ? 'up' : 'down' }}
+            </span>
+          </div>
+          <div v-if="!Object.keys(serviceList).length" class="text-xs text-gray-400">No data yet</div>
+        </div>
       </div>
       <span class="hidden lg:inline text-xs text-gray-600">{{ healthStatus }}</span>
 
@@ -300,6 +324,8 @@ const isHealthy = ref(false);
 const healthStatus = ref("Checking...");
 const healthLevel = ref("checking");
 const healthServices = ref({});
+const showHealthPopover = ref(false);
+const healthDotRef = ref(null);
 const showUserDropdown = ref(false);
 const showPasswordDialog = ref(false);
 const userMenuRef = ref(null);
@@ -326,6 +352,21 @@ const statusIconClass = computed(() => {
   if (healthLevel.value === "degraded") return "fas fa-minus";
   return "fas fa-exclamation";
 });
+
+const serviceList = computed(() => {
+  const s = healthServices.value;
+  if (!Object.keys(s).length) return {};
+  return {
+    minio: s.minio?.connected ?? !!s.minio,
+    database: s.database?.connected ?? !!s.database,
+    temporal: s.temporal?.connected ?? !!s.temporal,
+    converter: s.converter?.connected ?? !!s.converter,
+  };
+});
+
+const toggleHealthPopover = () => {
+  showHealthPopover.value = !showHealthPopover.value;
+};
 
 const healthTooltip = computed(() => {
   const details = [];
@@ -415,9 +456,11 @@ const checkHealth = async () => {
   }
 };
 const handleClickOutside = (e) => {
-  // Close user dropdown if clicking outside
   if (userMenuRef.value && !userMenuRef.value.contains(e.target)) {
     showUserDropdown.value = false;
+  }
+  if (healthDotRef.value && !healthDotRef.value.contains(e.target)) {
+    showHealthPopover.value = false;
   }
   
   // Close mobile menu if clicking outside

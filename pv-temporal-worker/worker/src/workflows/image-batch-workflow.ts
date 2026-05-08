@@ -240,6 +240,16 @@ export async function processBatchImages(input: BatchInput): Promise<BatchResult
     totalImages: progressState.totalRequested,
   });
 
+  // Report final completed state so the API can increment the album counter
+  try {
+    await reportProgress({ ...progressState, batchId, workflowId: `batch-${batchId}` });
+  } catch (e) {
+    log.error('reportProgress: failed (completion)', {
+      batchId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
   // Cleanup NFS scratch directory regardless of individual failures
   try {
     log.info('cleanupBatch: calling', { batchId, batchDir });

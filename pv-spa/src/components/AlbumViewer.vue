@@ -8,43 +8,14 @@
       :can-upload-photos="canUploadPhotos"
       :media-type="mediaType"
       :show-metadata="showPhotoMetadata"
+      :sort-order="sortOrder"
       @back="$emit('back')"
       @refresh="refreshAlbum"
       @upload="showUploadDialog = true"
       @media-type-change="mediaType = $event"
       @metadata-toggle="showPhotoMetadata = !showPhotoMetadata"
+      @sort-change="sortOrder = $event"
     />
-
-    <!-- Sort Controls - Add this section -->
-    <div v-if="!loading && !error && (mediaType === 'images' ? visiblePhotos.length > 0 : visibleVideos.length > 0)" class="flex justify-end items-center mb-6">
-      <div class="flex items-center gap-2">
-        <span class="text-sm text-gray-600">Sort by:</span>
-        <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-          <button 
-            @click="sortOrder = 'chronological'"
-            :class="[
-              'px-3 py-1 text-sm rounded-md transition-colors',
-              sortOrder === 'chronological' 
-                ? 'bg-white text-gray-900 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            ]"
-          >
-            Oldest First
-          </button>
-          <button 
-            @click="sortOrder = 'reverse'"
-            :class="[
-              'px-3 py-1 text-sm rounded-md transition-colors',
-              sortOrder === 'reverse' 
-                ? 'bg-white text-gray-900 shadow-sm' 
-                : 'text-gray-600 hover:text-gray-900'
-            ]"
-          >
-            Newest First
-          </button>
-        </div>
-      </div>
-    </div>
 
     <!-- Loading State -->
     <div v-if="loading" class="text-center py-12">
@@ -84,7 +55,6 @@
       :bucket-name="BUCKET_NAME"
       :show-metadata="showPhotoMetadata"
       :items-per-page="24"
-      :auto-load="false"
       @photo-click="openPhoto"
       @image-load="handleImageLoad"
       @image-error="handleImageError"
@@ -99,7 +69,6 @@
       :album-name="albumName"
       :bucket-name="BUCKET_NAME"
       :items-per-page="24"
-      :auto-load="false"
       @video-click="openVideo"
     />
 

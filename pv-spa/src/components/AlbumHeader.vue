@@ -1,85 +1,82 @@
 <template>
-  <div class="flex flex-col space-y-6 pb-8 border-b border-gray-200 dark:border-gray-700">
-    <!-- Back Button -->
-    <div class="flex items-center gap-3 justify-start">
-      <button v-if="!isPublic"
-        class="flex-shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-400 px-4 py-2 rounded-md text-sm transition h-10 w-12"
-        @click="$emit('back')">
-        <i class="fas fa-arrow-left"></i>
+  <div class="pb-3 sm:pb-5 border-b border-gray-200">
+
+    <!-- Row 1: back · title + count · actions -->
+    <div class="flex items-center gap-2 mb-2 sm:mb-3">
+
+      <button v-if="!isPublic" @click="$emit('back')"
+        class="flex-shrink-0 h-9 w-9 flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 transition">
+        <i class="fas fa-arrow-left text-sm"></i>
       </button>
-      <!-- Header Actions -->
-      <div class="flex items-center gap-3 flex-shrink-0">
-        <button v-if="!isPublic"
-          class="bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-400 px-4 py-2 rounded-md text-sm transition flex items-center justify-center disabled:opacity-60 h-10 w-12"
-          @click="$emit('refresh')" :disabled="loading" title="Refresh album">
-          <i class="fas fa-sync-alt" :class="{ 'fa-spin': loading }"></i>
-        </button>
 
-        <!-- Icon-only Share Button -->
-        <button @click="handleShare"
-          class="flex bg-blue-100 hover:bg-blue-200 text-gray-800 border border-gray-400 px-4 py-2 rounded-md text-sm transition items-center justify-center h-10 w-12"
-          title="Share this album">
-          <i class="fas fa-share-alt"></i>
-        </button>
-
-        <button v-if="canUploadPhotos"
-          class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold transition disabled:opacity-60 h-10 w-12"
-          @click="$emit('upload')">
-          <i class="fas fa-plus"></i>
-        </button>
-
-        <button
-          class="bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-400 px-3 py-2 rounded-md text-sm transition flex items-center gap-2 h-10"
-          @click="$emit('metadataToggle')" :title="showMetadata ? 'Hide Metadatadata' : 'Show Metadatadata'">
-          <i :class="showMetadata ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
-          <span class="hidden sm:inline">{{ showMetadata ? 'Hide Metadata' : 'Show Metadata' }}</span>
-        </button>
-
-      </div>
-    </div>
-
-    <!-- Album Info and Media Type Selector -->
-    <div class="flex items-center justify-between gap-4 flex-wrap">
-      <div class="flex items-center gap-3 flex-grow min-w-0">
-        <h2 class="text-xl font-semibold text-gray-900 flex items-center gap-2 truncate"
-          style="color: #111 !important;">
-          <i class="fas fa-images text-blue-500"></i> {{ cleanAlbumName }}
+      <div class="flex-1 min-w-0 flex items-baseline gap-2">
+        <h2 class="text-lg sm:text-xl font-semibold text-gray-900 truncate">
+          {{ cleanAlbumName }}
         </h2>
-        <span class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+        <span class="text-sm text-gray-500 whitespace-nowrap flex-shrink-0">
           {{ photoCount }} {{ mediaType === 'images' ? 'photos' : 'videos' }}
         </span>
       </div>
 
-      <!-- Media Type Selector -->
-      <div class="flex items-center gap-2">
-        <span class="text-sm text-gray-600">Show:</span>
-        <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-          <button @click="$emit('mediaTypeChange', 'images')" :class="[
-            'px-3 py-1 text-sm rounded-md transition-colors flex items-center gap-2',
-            mediaType === 'images'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900'
-          ]">
-            <i class="fas fa-image"></i>
-            Images
-          </button>
-          <button @click="$emit('mediaTypeChange', 'videos')" :class="[
-            'px-3 py-1 text-sm rounded-md transition-colors flex items-center gap-2',
-            mediaType === 'videos'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900'
-          ]">
-            <i class="fas fa-video"></i>
-            Videos
-          </button>
-        </div>
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <button v-if="!isPublic" @click="$emit('refresh')" :disabled="loading"
+          class="h-9 w-9 flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 transition disabled:opacity-50"
+          title="Refresh">
+          <i class="fas fa-sync-alt text-sm" :class="{ 'fa-spin': loading }"></i>
+        </button>
+        <button @click="handleShare"
+          class="h-9 w-9 flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 transition"
+          title="Share">
+          <i class="fas fa-share-alt text-sm"></i>
+        </button>
+        <button v-if="canUploadPhotos" @click="$emit('upload')"
+          class="h-9 w-9 flex items-center justify-center rounded-md bg-blue-500 hover:bg-blue-600 text-white transition"
+          title="Upload">
+          <i class="fas fa-plus text-sm"></i>
+        </button>
+        <button @click="$emit('metadataToggle')"
+          class="h-9 w-9 flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 transition"
+          :title="showMetadata ? 'Hide Metadata' : 'Show Metadata'">
+          <i :class="showMetadata ? 'fas fa-eye-slash' : 'fas fa-eye'" class="text-sm"></i>
+        </button>
       </div>
+    </div>
+
+    <!-- Row 2: media type · sort -->
+    <div class="flex items-center justify-between gap-2">
+
+      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+        <button @click="$emit('mediaTypeChange', 'images')" :class="[
+          'px-2.5 py-1 text-sm rounded-md transition-colors flex items-center gap-1.5',
+          mediaType === 'images' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+        ]">
+          <i class="fas fa-image text-xs"></i> Images
+        </button>
+        <button @click="$emit('mediaTypeChange', 'videos')" :class="[
+          'px-2.5 py-1 text-sm rounded-md transition-colors flex items-center gap-1.5',
+          mediaType === 'videos' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+        ]">
+          <i class="fas fa-video text-xs"></i> Videos
+        </button>
+      </div>
+
+      <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+        <button @click="$emit('sortChange', 'chronological')" :class="[
+          'px-2.5 py-1 text-sm rounded-md transition-colors',
+          sortOrder === 'chronological' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+        ]">Oldest</button>
+        <button @click="$emit('sortChange', 'reverse')" :class="[
+          'px-2.5 py-1 text-sm rounded-md transition-colors',
+          sortOrder === 'reverse' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+        ]">Newest</button>
+      </div>
+
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from "vue";
+import { computed } from "vue";
 import urlService from "../services/urlService.js";
 
 const props = defineProps({
@@ -88,44 +85,32 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   canUploadPhotos: { type: Boolean, default: false },
   isPublic: { type: Boolean, default: false },
-  mediaType: { type: String, default: 'images' }, // 'images' or 'videos'
+  mediaType: { type: String, default: 'images' },
   showMetadata: { type: Boolean, default: true },
+  sortOrder: { type: String, default: 'reverse' },
 });
 
-const emit = defineEmits(["back", "refresh", "upload", "mediaTypeChange", "metadataToggle"]);
+const emit = defineEmits(["back", "refresh", "upload", "mediaTypeChange", "metadataToggle", "sortChange"]);
 
 const cleanAlbumName = computed(() => {
   const match = props.albumName.match(/^(.*)\.(\d{2})\/$/);
   return match ? `${match[1]} (${match[2]})` : props.albumName;
 });
 
-onMounted(() => {
-  console.log("[AlbumHeader] Mounted with album:", props.albumName);
-});
-
 const handleShare = async () => {
   const shareUrl = urlService.generateShareableUrl(props.albumName, true);
-  console.log("[AlbumHeader] Share button clicked");
-  console.log("[AlbumHeader] Generated share URL:", shareUrl);
-
   if (navigator.share) {
     try {
-      await navigator.share({
-        title: "Shared Album",
-        text: `Check out this album: ${props.albumName}`,
-        url: shareUrl,
-      });
-      console.log("[AlbumHeader] Native share triggered");
-    } catch (err) {
-      console.error("[AlbumHeader] Share failed:", err);
+      await navigator.share({ title: props.albumName, url: shareUrl });
+    } catch {
+      // user cancelled or not supported
     }
   } else {
     try {
       await navigator.clipboard.writeText(shareUrl);
       alert("Link copied to clipboard!");
-      console.log("[AlbumHeader] Fallback: copied to clipboard");
-    } catch (err) {
-      console.error("[AlbumHeader] Clipboard copy failed:", err);
+    } catch {
+      // clipboard not available
     }
   }
 };

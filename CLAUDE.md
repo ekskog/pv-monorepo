@@ -234,6 +234,17 @@ Minimal test coverage today:
 - **pv-converter / pv-metadata**: Python 3.11, async FastAPI handlers
 - No formal test suite — rely on integration testing against the running cluster
 
+## SPA Layout
+
+`App.vue` `<main>` uses `px-2 sm:px-4 py-4 sm:py-6` — minimal horizontal padding, no `max-w` constraint. Individual views that need centering (e.g. `Albums.vue`) apply their own `max-w-[1200px] mx-auto`. Do not add a global `max-w` back to `App.vue` — it causes excessive whitespace in the photo grid.
+
+## Photo Grid (`PhotoGrid.vue`)
+
+- Renders a slice of the full photo array (`itemsPerPage: 24` default); all photos are fetched at once from the API.
+- Infinite scroll via `IntersectionObserver` on a sentinel `<div ref="scrollTrigger">` at the bottom. The sentinel uses `v-show` (not `v-if`) — `v-if` would destroy and recreate the element on each batch load, breaking the observer's DOM reference.
+- `rootMargin: '200px'` on the observer pre-triggers the next batch before the user reaches the bottom.
+- No extra network requests on scroll — `loadMore()` is a synchronous `Array.slice`.
+
 ---
 
 ## SPA Runtime Configuration

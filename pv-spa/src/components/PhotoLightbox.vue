@@ -2,25 +2,6 @@
   <div v-if="show" class="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50 cursor-pointer" @click="$emit('close')">
     <div class="relative w-full h-full flex items-center justify-center cursor-default" @click.stop>
       
-      <!-- Navigation Controls -->
-      <button 
-        class="absolute top-1/2 left-8 transform -translate-y-1/2 bg-white bg-opacity-10 text-white w-15 h-15 rounded-full text-2xl flex items-center justify-center transition-all duration-200 backdrop-blur-sm z-10 hover:bg-opacity-20 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed md:left-4 md:w-12 md:h-12 md:text-xl" 
-        @click.stop="previousPhoto" 
-        :disabled="currentIndex === 0"
-        title="Previous Photo (←)"
-      >
-        <i class="fas fa-chevron-left"></i>
-      </button>
-
-      <button 
-        class="absolute top-1/2 right-8 transform -translate-y-1/2 bg-white bg-opacity-10 text-white w-15 h-15 rounded-full text-2xl flex items-center justify-center transition-all duration-200 backdrop-blur-sm z-10 hover:bg-opacity-20 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed md:right-4 md:w-12 md:h-12 md:text-xl" 
-        @click.stop="nextPhoto"
-        :disabled="currentIndex === photos.length - 1" 
-        title="Next Photo (→)"
-      >
-        <i class="fas fa-chevron-right"></i>
-      </button>
-
       <!-- Close Button -->
       <button class="absolute top-8 right-8 bg-white bg-opacity-10 text-white w-12 h-12 rounded-full text-xl flex items-center justify-center transition-all duration-200 backdrop-blur-sm z-10 hover:bg-opacity-20 hover:scale-110 md:top-4 md:right-4 md:w-10 md:h-10 md:text-base" @click.stop="$emit('close')" title="Close (Esc)">
         <i class="fas fa-times"></i>
@@ -49,10 +30,26 @@
 
         <!-- Photo Info & Actions -->
         <div class="bg-black bg-opacity-80 backdrop-blur-sm text-white p-4 px-6 flex justify-between items-center rounded-lg mt-auto flex-shrink-0 w-full max-w-3xl md:flex-col md:gap-4 md:text-center md:p-4">
-          <div>
-            <p class="m-0 text-sm opacity-80">
+          <div class="flex items-center gap-3">
+            <button
+              @click.stop="previousPhoto"
+              :disabled="currentIndex === 0"
+              class="bg-white bg-opacity-10 text-white w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 backdrop-blur-sm hover:bg-opacity-20 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Previous Photo (←)"
+            >
+              <i class="fas fa-chevron-left text-sm"></i>
+            </button>
+            <p class="m-0 text-sm opacity-80 min-w-[5rem] text-center">
               {{ currentIndex + 1 }} of {{ photos.length }}
             </p>
+            <button
+              @click.stop="nextPhoto"
+              :disabled="currentIndex === photos.length - 1"
+              class="bg-white bg-opacity-10 text-white w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 backdrop-blur-sm hover:bg-opacity-20 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Next Photo (→)"
+            >
+              <i class="fas fa-chevron-right text-sm"></i>
+            </button>
           </div>
 
           <div class="flex gap-3">

@@ -35,7 +35,7 @@
           <i class="fas fa-plus text-sm"></i>
         </button>
         <button @click="$emit('metadataToggle')"
-          class="h-9 w-9 flex items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 transition"
+          class="hidden sm:flex h-9 w-9 items-center justify-center rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 transition"
           :title="showMetadata ? 'Hide Metadata' : 'Show Metadata'">
           <i :class="showMetadata ? 'fas fa-eye-slash' : 'fas fa-eye'" class="text-sm"></i>
         </button>

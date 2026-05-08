@@ -130,7 +130,6 @@ const getPhoto = (photo) => {
 };
 
 const getOptimizedPhotoUrl = (photo) => {
-  // Thumbnail for the grid — falls back to full-res if imgproxy not configured
   return photo.thumbnailUrl || photo.presignedUrl || apiService.getObject(props.albumName, photo.name);
 };
 

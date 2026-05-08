@@ -255,7 +255,6 @@ The SPA's nginx (`pv-spa/nginx.conf`) also proxies API paths (`/auth`, `/albums`
 | `photos.ekskog.me` | pv-spa nginx (port 80) | Cloudflare Tunnel |
 | `vault-api.ekskog.net` | pv-api (port 3000) | Cloudflare Tunnel |
 | `objects.ekskog.net` | MinIO (port 9000) | Cloudflare Proxy (orange cloud) |
-| `img.ekskog.net` | imgproxy (port 8080) | Cloudflare Tunnel |
 
 All Cloudflare Tunnel routes are configured in the **Cloudflare dashboard** (not in K8s). The cloudflared pod runs in the `webapps` namespace and connects outbound to Cloudflare. It resolves backend services by K8s cluster DNS.
 
@@ -263,16 +262,19 @@ All Cloudflare Tunnel routes are configured in the **Cloudflare dashboard** (not
 
 ---
 
-## imgproxy
+## Thumbnails
 
-imgproxy runs in the `pv` namespace (`k8s/base/imgproxy/`). It fetches source images from MinIO via S3 protocol and resizes them on the fly.
+Thumbnails are pre-generated WebP files stored at `<album>/thumbs/<filename>.webp` in the `photovault` MinIO bucket. They are 400px wide, WebP quality 75.
 
-**Key operational facts:**
-- AVIF decoding + resizing is CPU and memory intensive. With 4 workers, the memory limit must be at least **1.5Gi** to avoid OOMKill under load.
-- imgproxy must send `IMGPROXY_ALLOW_ORIGIN: "https://photos.ekskog.me"` for the SPA to be able to `fetch()` thumbnail URLs (CORS).
-- `env-config.js` in pv-spa sets `IMGPROXY_URL` which pv-api reads to construct `thumbnailUrl` fields. If `IMGPROXY_URL` is unset, thumbnailUrl is null and the SPA falls back to the presigned URL.
-- Source URLs passed to imgproxy are `s3://<bucket>/<object>`, base64url-encoded in the path: `${IMGPROXY_URL}/insecure/rs:fit:400:0/<encoded>`.
-- imgproxy connects to MinIO using the internal hostname `mjolnir` via a `hostAliases` entry in the deployment (maps `mjolnir` → `192.168.1.8`).
+**How thumbnails are created:**
+- **New uploads**: `pv-converter` generates the WebP thumbnail from the source image (JPEG/HEIC) using Pillow before freeing source bytes, then uploads it to `<album>/thumbs/<filename>.webp`. This runs for both traditional and Temporal bulk uploads since both go through pv-converter.
+- **Existing images**: `tools/generate-thumbs.js` — run locally with MinIO credentials. Idempotent (skips existing thumbs). Supports `--album <name>` to process a single album. Credentials: `MINIO_ACCESS_KEY=lucarv MINIO_SECRET_KEY=<secret>`.
+
+**How thumbnails are served:**
+- `pv-api` `getPhotos` generates a presigned URL for `<album>/thumbs/<filename>.webp` and returns it as `thumbnailUrl`.
+- `PhotoCard.vue` loads `thumbnailUrl` for the grid. On error (thumbnail missing), it silently falls back to the full-res presigned URL without showing an error to the user. On successful thumbnail load, it prefetches the full-res URL so the lightbox opens instantly.
+- Thumbnails are deleted alongside their parent AVIF when a photo is deleted (`albums.js` `deleteObjects`).
+
 
 ---
 
@@ -287,6 +289,6 @@ The `albums.counter` column in MariaDB caches the photo count per album and is u
 
 **Known limitation:** Re-uploading the same files overwrites the MinIO objects silently but still increments the counter, causing drift. If counters look wrong, run the audit+fix script (counts actual `.avif/.jpg/.mp4` objects in MinIO per album prefix and resets the DB counter to match).
 
-**Known bug (TODO):** Albums created via the SPA show `0 photos` in the album list even after photos are uploaded and visible inside the album. The counter is not being incremented correctly for at least some upload paths. Needs investigation — check whether the upload path used (traditional vs bulk) is correctly incrementing `albums.counter` in MariaDB after conversion completes.
+**Root cause of past counter bug (fixed):** The Temporal workflow was setting `completedAt` after the image loop but never calling `reportProgress` with that final state. The API only increments the counter when `state === 'complete'`, so the counter was never updated for bulk uploads. Fixed in `image-batch-workflow.ts` by adding a final `reportProgress` call after `completedAt` is set.
 
 **Do not** count objects from the per-album metadata JSON (`<folder>/<folder>.json`) to derive the counter — the JSON may contain entries for files that no longer exist in MinIO, or for original files that were converted and replaced. Count actual MinIO objects instead.

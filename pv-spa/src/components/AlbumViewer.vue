@@ -45,6 +45,25 @@
       <p class="text-gray-600">No videos found in this album</p>
     </div>
 
+    <!-- Grid size controls (desktop only) -->
+    <div v-if="mediaType === 'images' && !loading && !error && visiblePhotos.length > 0"
+      class="hidden sm:flex items-center justify-end gap-2 mb-2 px-1">
+      <span class="text-xs text-gray-400">Grid size</span>
+      <button
+        @click="adjustCellSize(-50)"
+        class="w-7 h-7 flex items-center justify-center rounded border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors text-sm leading-none"
+        :disabled="cellSize <= 150"
+        aria-label="Decrease grid size"
+      >−</button>
+      <span class="text-xs text-gray-400 w-12 text-center">{{ cellSize }}px</span>
+      <button
+        @click="adjustCellSize(50)"
+        class="w-7 h-7 flex items-center justify-center rounded border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors text-sm leading-none"
+        :disabled="cellSize >= 700"
+        aria-label="Increase grid size"
+      >+</button>
+    </div>
+
     <!-- Photos Grid with Pagination (now uses sortedPhotos) -->
     <PhotoGrid
       v-if="mediaType === 'images'"
@@ -55,6 +74,7 @@
       :bucket-name="BUCKET_NAME"
       :show-metadata="showPhotoMetadata"
       :items-per-page="24"
+      :cell-size="cellSize"
       @photo-click="openPhoto"
       @image-load="handleImageLoad"
       @image-error="handleImageError"
@@ -194,6 +214,14 @@ const sortOrder = ref('reverse'); // 'chronological' or 'reverse'
 // NEW: Media type state (images or videos)
 const mediaType = ref('images'); // 'images' or 'videos'
 const showPhotoMetadata = ref(true);
+
+// Grid cell size (desktop only), persisted in localStorage
+const CELL_SIZE_KEY = 'pv-grid-cell-size';
+const cellSize = ref(parseInt(localStorage.getItem(CELL_SIZE_KEY) || '400', 10));
+const adjustCellSize = (delta) => {
+  cellSize.value = Math.min(700, Math.max(150, cellSize.value + delta));
+  localStorage.setItem(CELL_SIZE_KEY, String(cellSize.value));
+};
 
 // Helper function to sort photos by timestamp
 const sortPhotosByTimestamp = (photosArray, order = 'chronological') => {

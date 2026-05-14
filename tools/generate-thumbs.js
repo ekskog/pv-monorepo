@@ -31,10 +31,10 @@ const client = new Minio.Client({
   secretKey: process.env.MINIO_SECRET_KEY,
 });
 
-function listAllObjects() {
+function listAllObjects(prefix = '') {
   return new Promise((resolve, reject) => {
     const objects = [];
-    const stream = client.listObjects(BUCKET, '', true);
+    const stream = client.listObjects(BUCKET, prefix, true);
     stream.on('data', obj => { if (obj.name) objects.push(obj.name); });
     stream.on('end', () => resolve(objects));
     stream.on('error', reject);
@@ -76,13 +76,16 @@ async function main() {
     process.exit(1);
   }
 
+  const forceRegen = process.argv.includes('--force');
   if (albumFilter) console.log(`Album filter: ${albumFilter}`);
+  if (forceRegen) console.log('Force mode: regenerating all thumbnails');
   console.log(`Connecting to ${ENDPOINT}/${BUCKET}...`);
-  const allObjects = await listAllObjects();
+
+  const prefix = albumFilter ? albumFilter + '/' : '';
+  const allObjects = await listAllObjects(prefix);
 
   const photos = allObjects.filter(name =>
-    name.endsWith('.avif') && !name.includes('/thumbs/') &&
-    (!albumFilter || name.startsWith(albumFilter + '/'))
+    name.endsWith('.avif') && !name.includes('/thumbs/')
   );
   const existingThumbs = new Set(
     allObjects.filter(name => name.includes('/thumbs/'))
@@ -99,7 +102,7 @@ async function main() {
     const thumbFilename = avifFilename.replace(/\.avif$/, '.webp');
     const thumbName = `${album}/thumbs/${thumbFilename}`;
 
-    if (existingThumbs.has(thumbName)) {
+    if (!forceRegen && existingThumbs.has(thumbName)) {
       skipped++;
       continue;
     }

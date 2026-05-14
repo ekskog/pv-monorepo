@@ -2,7 +2,8 @@
   <div class="w-full">
     <!-- Photo Grid -->
     <div
-      class="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1 sm:gap-2 transform-gpu"
+      class="photo-grid grid grid-cols-3 gap-1 sm:gap-2 transform-gpu"
+      :style="{ '--cell-size': cellSize + 'px' }"
     >
       <PhotoCard
         v-for="photo in displayedPhotos"
@@ -51,6 +52,7 @@ const props = defineProps({
   bucketName: { type: String, required: true },
   showMetadata: { type: Boolean, default: true },
   itemsPerPage: { type: Number, default: 24 },
+  cellSize: { type: Number, default: 400 },
 })
 
 const emit = defineEmits([
@@ -104,3 +106,11 @@ onUnmounted(teardownObserver)
 
 defineExpose({ loadMore })
 </script>
+
+<style scoped>
+@media (min-width: 640px) {
+  .photo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(var(--cell-size, 400px), 1fr));
+  }
+}
+</style>

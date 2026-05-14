@@ -255,16 +255,19 @@ const getPhotos = (minioClient, publicMinioClient) => async (req, res) => {
 
     // Fetch the MinIO objects for this album using the album.path
     const objects = [];
-    const stream = minioClient.listObjectsV2(
-      config.minio.bucketName,
-      //album.path,
-      pathFromName,
-      true
-    ); // recursive = true to get all files
+    const { listAllObjects } = require('../services/minio-list-service');
 
     const presignedExpiry = 3600; // 1 hour
 
-    for await (const obj of stream) {
+    for await (const obj of listAllObjects(
+      config.minio.endpoint,
+      config.minio.port,
+      config.minio.useSSL,
+      config.minio.accessKey,
+      config.minio.secretKey,
+      config.minio.bucketName,
+      pathFromName,
+    )) {
       // Skip thumbnails folder
       if (obj.name.includes("/thumbs/")) continue;
 

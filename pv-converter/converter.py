@@ -8,7 +8,7 @@ import io
 import logging
 
 import pillow_heif
-from PIL import Image
+from PIL import Image, ImageOps
 
 pillow_heif.register_heif_opener()
 
@@ -139,6 +139,7 @@ def _convert_jpeg_to_avif(in_p: Path, out_p: Path):
 
 def generate_thumbnail_webp(image_bytes: bytes, max_width: int = 400) -> bytes:
     with Image.open(io.BytesIO(image_bytes)) as img:
+        img = ImageOps.exif_transpose(img)
         if img.mode not in ('RGB', 'L'):
             img = img.convert('RGB')
         if img.width > max_width:

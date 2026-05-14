@@ -80,6 +80,22 @@ async function startTemporalReconnectLoop() {
 
 // Minio Client Configuration
 
+// minio SDK v8 uses fast-xml-parser v5, which has an entityExpansion limit of 1000.
+// That counter accumulates across paginated listObjectsV2 calls, so albums with
+// >1000 photos throw "Entity expansion limit exceeded: N > 1000".
+// Patch the constructor before requiring minio so its module-level XMLParser
+// instance is created with a safe high limit instead.
+;(function patchFxpEntityLimit() {
+  try {
+    const fxp = require('fast-xml-parser');
+    const Orig = fxp.XMLParser;
+    fxp.XMLParser = function XMLParser(opts) {
+      return new Orig(Object.assign({}, opts, { entityExpansion: 1e8 }));
+    };
+    Object.setPrototypeOf(fxp.XMLParser, Orig);
+  } catch (_) {}
+}());
+
 const { Client: MinioClient } = require("minio");
 // MinIO Client Configuration
 let minioClient;

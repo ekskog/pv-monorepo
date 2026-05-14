@@ -6,11 +6,18 @@ import type * as reportDeps from '../activities/reportProgress';
 
 type AllActivities = typeof convertDeps & typeof metadataDeps & typeof persistDeps & typeof reportDeps;
 
-const { convertImage, extractAndPersistMetadata, cleanupBatch, reportProgress } =
+const { convertImage, extractAndPersistMetadata, cleanupBatch } =
   proxyActivities<AllActivities>({
     startToCloseTimeout: '60 minutes',
     retry: { maximumAttempts: 5 },
   });
+
+// reportProgress must not block the workflow for long — give it a tight timeout
+// so a transient pv-api restart can't freeze the entire batch for 60 minutes.
+const { reportProgress } = proxyActivities<AllActivities>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 1 },
+});
 
 export interface ImageFile {
   filename: string;

@@ -244,6 +244,7 @@ Minimal test coverage today:
 - Infinite scroll via `IntersectionObserver` on a sentinel `<div ref="scrollTrigger">` at the bottom. The sentinel uses `v-show` (not `v-if`) — `v-if` would destroy and recreate the element on each batch load, breaking the observer's DOM reference.
 - `rootMargin: '200px'` on the observer pre-triggers the next batch before the user reaches the bottom.
 - No extra network requests on scroll — `loadMore()` is a synchronous `Array.slice`.
+- **Grid size control (desktop):** `PhotoGrid` accepts a `cellSize` prop (Number, default 400). On `sm:` breakpoint and above, the grid switches from `grid-cols-3` to `repeat(auto-fill, minmax(var(--cell-size), 1fr))` via scoped CSS and a CSS variable injected through `:style`. `AlbumViewer` manages `cellSize` state (150–700px, step 50) with `+`/`−` buttons rendered above the grid on desktop only. The value is persisted in `localStorage` under key `pv-grid-cell-size`.
 
 ---
 
@@ -278,8 +279,8 @@ All Cloudflare Tunnel routes are configured in the **Cloudflare dashboard** (not
 Thumbnails are pre-generated WebP files stored at `<album>/thumbs/<filename>.webp` in the `photovault` MinIO bucket. They are 400px wide, WebP quality 75.
 
 **How thumbnails are created:**
-- **New uploads**: `pv-converter` generates the WebP thumbnail from the source image (JPEG/HEIC) using Pillow before freeing source bytes, then uploads it to `<album>/thumbs/<filename>.webp`. This runs for both traditional and Temporal bulk uploads since both go through pv-converter.
-- **Existing images**: `tools/generate-thumbs.js` — run locally with MinIO credentials. Idempotent (skips existing thumbs). Supports `--album <name>` to process a single album. Credentials: `MINIO_ACCESS_KEY=lucarv MINIO_SECRET_KEY=<secret>`.
+- **New uploads**: `pv-converter` generates the WebP thumbnail from the source image (JPEG/HEIC) using Pillow (`ImageOps.exif_transpose()` is applied first to correct EXIF orientation before resizing) before freeing source bytes, then uploads it to `<album>/thumbs/<filename>.webp`. This runs for both traditional and Temporal bulk uploads since both go through pv-converter.
+- **Existing images**: `tools/generate-thumbs.js` — run locally with MinIO credentials. Idempotent by default (skips existing thumbs). Add `--force` to regenerate all thumbnails (e.g. after an orientation fix). Supports `--album <name>` to limit to one album and avoid scanning the entire bucket. Credentials: `MINIO_ACCESS_KEY=lucarv MINIO_SECRET_KEY=<secret>`.
 
 **How thumbnails are served:**
 - `pv-api` `getPhotos` generates a presigned URL for `<album>/thumbs/<filename>.webp` and returns it as `thumbnailUrl`.
@@ -303,3 +304,26 @@ The `albums.counter` column in MariaDB caches the photo count per album and is u
 **Root cause of past counter bug (fixed):** The Temporal workflow was setting `completedAt` after the image loop but never calling `reportProgress` with that final state. The API only increments the counter when `state === 'complete'`, so the counter was never updated for bulk uploads. Fixed in `image-batch-workflow.ts` by adding a final `reportProgress` call after `completedAt` is set.
 
 **Do not** count objects from the per-album metadata JSON (`<folder>/<folder>.json`) to derive the counter — the JSON may contain entries for files that no longer exist in MinIO, or for original files that were converted and replaced. Count actual MinIO objects instead.
+
+---
+
+## MinIO Listing (`pv-api/src/services/minio-list-service.js`)
+
+The minio SDK v8 uses fast-xml-parser v5 with a 1000-entity expansion limit. S3 ETags contain `&quot;md5&quot;` — 2 XML entity refs per object — so albums with ≥ 501 objects hit the limit and return a 500 error.
+
+**Fix:** `pv-api/src/routes/albums.js` `getPhotos` does **not** use the minio SDK's `listObjectsV2`. Instead it uses `pv-api/src/services/minio-list-service.js`, a custom AWS Sig v4 listing implementation built on Node.js built-ins (`crypto`, `http`/`https`) with zero extra dependencies.
+
+Key behaviours:
+- Paginates with `max-keys=200` per request (≤ 400 entity refs, well under the limit).
+- Returns an async generator yielding `{ name, size, lastModified, etag }` — same shape as the minio SDK stream.
+- **Do not** replace this with the minio SDK's listing API — it will re-introduce the entity expansion crash for large albums.
+
+---
+
+## Temporal Activity Timeouts
+
+All long-running activities (`convertImage`, `extractAndPersistMetadata`, `cleanupBatch`) share `startToCloseTimeout: '60 minutes'`. `reportProgress` is in a **separate** `proxyActivities` block with `startToCloseTimeout: '30 seconds'` and `maximumAttempts: 1`.
+
+**Why separate:** `reportProgress` posts a small progress update to pv-api over HTTP. If pv-api restarts at exactly the wrong moment, the fetch can hang indefinitely. With the shared 60-minute timeout the entire workflow stalls for an hour waiting for a progress ping. The 30-second tight timeout lets it fail fast and move on — a missed progress update is harmless, a stalled workflow is not.
+
+**Do not** merge `reportProgress` back into the shared `proxyActivities` block.

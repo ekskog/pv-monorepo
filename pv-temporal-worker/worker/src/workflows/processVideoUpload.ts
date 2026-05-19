@@ -1,5 +1,4 @@
 import { proxyActivities, log } from '@temporalio/workflow';
-import path from 'path';
 import type * as videoDeps from '../activities/uploadVideo';
 import type * as cleanupDeps from '../activities/cleanup';
 
@@ -28,9 +27,7 @@ export interface VideoUploadWorkflowInput {
 
 export async function processVideoUpload(input: VideoUploadWorkflowInput): Promise<void> {
   const { batchId, folder, videos } = input;
-  const batchDir = videos[0]?.path
-    ? path.dirname(videos[0].path)
-    : `/nfs-storage/video-${batchId}`;
+  const batchDir = `/nfs-storage/video-${batchId}`;
 
   log.info('processVideoUpload: start', { batchId, folder, videoCount: videos.length });
 

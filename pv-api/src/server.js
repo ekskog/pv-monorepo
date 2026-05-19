@@ -456,7 +456,7 @@ async function startServer() {
     }
 
     app.use("/bulk", temporalRoutes(getTemporalClient, config, { sendSSEEvent, persistProgress, getProgress }));
-    app.use("/video", videoUploadRoutes(minioClient, publicMinioClient));
+    app.use("/video", videoUploadRoutes(minioClient));
     app.use("/", healthRoutes(minioClient, temporalClient));
 
     //debugServer(`[server.js] Database initialized successfully`);

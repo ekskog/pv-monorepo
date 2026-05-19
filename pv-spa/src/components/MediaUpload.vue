@@ -204,35 +204,20 @@ const totalSizeMB = computed(() => {
   return (totalBytes / (1024 * 1024)).toFixed(2)
 })
 
-// Upload a single file to MinIO via a presigned PUT URL, reporting progress.
-async function uploadVideoWithPresignedUrl(file, fileIndex, totalFiles) {
+// Stream a single video file to pv-api which pipes it directly to MinIO.
+// No temp file on disk, no MinIO CORS needed, progress tracked via XHR.
+async function uploadVideoFile(file, fileIndex, totalFiles) {
   const API_BASE_URL = apiService.getApiBaseUrl();
   const token = apiService.getAuthToken();
+  const folder = encodeURIComponent(props.albumName || '');
+  const filename = encodeURIComponent(file.name);
+  const url = `${API_BASE_URL}/video/upload/${folder}/${filename}`;
 
-  // Step 1: get a presigned PUT URL from pv-api
-  const presignRes = await fetch(`${API_BASE_URL}/video/presign`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ folder: props.albumName, filename: file.name }),
-  });
-
-  if (!presignRes.ok) {
-    const err = await presignRes.json().catch(() => ({}));
-    throw new Error(err.error || `Presign request failed (${presignRes.status})`);
-  }
-
-  const { presignedUrl } = await presignRes.json();
-
-  // Step 2: PUT the raw file body directly to MinIO
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
 
     xhr.upload.addEventListener('progress', (event) => {
       if (!event.lengthComputable) return;
-      // Scale progress across all files in the batch
       const filesDone = fileIndex;
       const thisFile = event.loaded / event.total;
       const overall = Math.round(((filesDone + thisFile) / totalFiles) * 100);
@@ -241,19 +226,24 @@ async function uploadVideoWithPresignedUrl(file, fileIndex, totalFiles) {
     });
 
     xhr.addEventListener('load', () => {
-      // MinIO presigned PUT returns 200 on success (no JSON body)
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`MinIO upload failed (${xhr.status})`));
+        try {
+          const body = JSON.parse(xhr.responseText);
+          reject(new Error(body.error || `Upload failed (${xhr.status})`));
+        } catch {
+          reject(new Error(`Upload failed (${xhr.status})`));
+        }
       }
     });
 
-    xhr.addEventListener('error', () => reject(new Error('Network error during upload to MinIO')));
+    xhr.addEventListener('error', () => reject(new Error('Network error during video upload')));
     xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
 
-    xhr.open('PUT', presignedUrl);
+    xhr.open('POST', url);
     xhr.setRequestHeader('Content-Type', file.type || 'video/quicktime');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.send(file);
   });
 }
@@ -328,7 +318,7 @@ async function uploadFiles() {
       for (let i = 0; i < total; i++) {
         const file = selectedFiles.value[i];
         uploadStatus.value = `Uploading ${file.name} (${i + 1}/${total})…`;
-        await uploadVideoWithPresignedUrl(file, i, total);
+        await uploadVideoFile(file, i, total);
         uploadedFiles.value.add(file.name);
       }
 

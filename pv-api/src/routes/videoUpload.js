@@ -11,46 +11,37 @@ function normalizePath(folder, filename) {
   return f ? `${f}/${filename}` : filename;
 }
 
-// minioClient        — internal client (for bucket ops)
-// publicMinioClient  — client configured with MINIO_PUBLIC_URL, so presigned
-//                      URLs are signed with a host the browser can reach.
-//                      Falls back to minioClient if not configured (local network).
-module.exports = (minioClient, publicMinioClient) => {
-  const presignClient = publicMinioClient || minioClient;
+module.exports = (minioClient) => {
 
-  // POST /video/presign
-  // Returns a short-lived presigned PUT URL the browser uses to upload a video
-  // directly to MinIO, bypassing pv-api and any proxy size limits.
-  router.post('/presign', authenticateToken, requireRole('admin'), async (req, res) => {
-    const { folder, filename } = req.body;
-
-    if (!folder || !filename) {
-      return res.status(400).json({ success: false, error: 'folder and filename are required' });
-    }
-
+  // POST /video/upload/:folder/:filename
+  // Streams the raw request body directly to MinIO — no temp file, no MinIO CORS needed.
+  // The browser sends the file as the raw body (Content-Type: video/*, Content-Length required).
+  router.post('/upload/:folder/:filename', authenticateToken, requireRole('admin'), (req, res) => {
+    const folder = decodeURIComponent(req.params.folder);
+    const filename = decodeURIComponent(req.params.filename);
     const objectName = normalizePath(folder, filename);
-    const expiry = 3600; // 1 hour
+    const contentType = req.headers['content-type'] || 'video/quicktime';
+    const contentLength = parseInt(req.headers['content-length'], 10);
 
-    try {
-      const presignedUrl = await presignClient.presignedPutObject(
-        config.minio.bucketName,
-        objectName,
-        expiry,
-      );
-
-      debugVideo(`Presigned URL generated for ${objectName}`);
-
-      return res.json({
-        success: true,
-        presignedUrl,
-        objectName,
-        bucket: config.minio.bucketName,
-        expiresIn: expiry,
-      });
-    } catch (err) {
-      debugVideo(`Error generating presigned URL: ${err.message}`);
-      return res.status(500).json({ success: false, error: err.message });
+    if (!contentLength || isNaN(contentLength)) {
+      return res.status(400).json({ success: false, error: 'Content-Length header is required' });
     }
+
+    debugVideo(`Streaming upload → ${objectName} (${(contentLength / 1024 / 1024).toFixed(1)} MB)`);
+
+    minioClient.putObject(
+      config.minio.bucketName,
+      objectName,
+      req,
+      contentLength,
+      { 'Content-Type': contentType },
+    ).then(() => {
+      debugVideo(`Upload complete: ${objectName}`);
+      res.json({ success: true, objectName, bucket: config.minio.bucketName });
+    }).catch((err) => {
+      debugVideo(`Upload failed for ${objectName}: ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    });
   });
 
   return router;

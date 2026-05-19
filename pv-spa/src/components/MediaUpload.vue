@@ -204,30 +204,31 @@ const totalSizeMB = computed(() => {
   return (totalBytes / (1024 * 1024)).toFixed(2)
 })
 
-// Stream a single video file to pv-api which pipes it directly to MinIO.
-// No temp file on disk, no MinIO CORS needed, progress tracked via XHR.
-async function uploadVideoFile(file, fileIndex, totalFiles) {
+// Send all selected video files as multipart/form-data to pv-api, which stages them
+// to NFS and hands off to a Temporal workflow. Returns 202 + batchId immediately.
+async function uploadVideoFiles() {
   const API_BASE_URL = apiService.getApiBaseUrl();
   const token = apiService.getAuthToken();
   const folder = encodeURIComponent(props.albumName || '');
-  const filename = encodeURIComponent(file.name);
-  const url = `${API_BASE_URL}/video/upload/${folder}/${filename}`;
+  const url = `${API_BASE_URL}/video/upload/${folder}`;
+
+  const formData = new FormData();
+  selectedFiles.value.forEach(file => formData.append('videos', file));
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
 
     xhr.upload.addEventListener('progress', (event) => {
       if (!event.lengthComputable) return;
-      const filesDone = fileIndex;
-      const thisFile = event.loaded / event.total;
-      const overall = Math.round(((filesDone + thisFile) / totalFiles) * 100);
-      uploadProgress.value = overall;
-      uploadStatus.value = `Uploading ${file.name}… ${Math.round(thisFile * 100)}%`;
+      const pct = Math.round((event.loaded / event.total) * 100);
+      uploadProgress.value = pct;
+      uploadStatus.value = `Uploading ${selectedFiles.value.length} video(s)… ${pct}%`;
     });
 
     xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { reject(new Error('Invalid JSON response')); }
       } else {
         try {
           const body = JSON.parse(xhr.responseText);
@@ -242,9 +243,8 @@ async function uploadVideoFile(file, fileIndex, totalFiles) {
     xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
 
     xhr.open('POST', url);
-    xhr.setRequestHeader('Content-Type', file.type || 'video/quicktime');
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    xhr.send(file);
+    xhr.send(formData);
   });
 }
 
@@ -313,20 +313,17 @@ async function uploadFiles() {
       emit('jobReady', { mode: 'temporal-bulk', batchId: response.batchId, workflowId });
 
     } else {
-      // ── Video upload: presigned PUT directly to MinIO ───────────────────
-      const total = selectedFiles.value.length;
-      for (let i = 0; i < total; i++) {
-        const file = selectedFiles.value[i];
-        uploadStatus.value = `Uploading ${file.name} (${i + 1}/${total})…`;
-        await uploadVideoFile(file, i, total);
-        uploadedFiles.value.add(file.name);
-      }
+      // ── Video upload → Temporal ─────────────────────────────────────────
+      uploadStatus.value = `Uploading ${selectedFiles.value.length} video(s)…`;
+      const response = await uploadVideoFiles();
 
-      uploadProgress.value = 100;
-      uploadStatus.value = `${total} video${total !== 1 ? 's' : ''} uploaded successfully`;
-      console.log('[MediaUpload] All videos uploaded directly to MinIO');
-      pendingJobId.value = null;
-      emit('jobReady', { mode: 'legacy-video', jobId: null });
+      if (!response.success) throw new Error(response.error || 'Video upload failed');
+      if (!response.batchId) throw new Error('Video upload response missing batchId');
+
+      const workflowId = `video-${response.batchId}`;
+      console.log('[MediaUpload] Video accepted, workflowId:', workflowId);
+      pendingJobId.value = workflowId;
+      emit('jobReady', { mode: 'temporal-video', batchId: response.batchId, workflowId });
     }
 
     // Close dialog after successful upload

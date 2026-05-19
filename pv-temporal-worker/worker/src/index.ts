@@ -6,6 +6,7 @@ import * as convertActivities from './activities/convertImage';
 import * as metadataActivities from './activities/metadataActivity';
 import * as persistActivities from './activities/cleanup'; // cleanupBatch activity
 import * as reportActivities from './activities/reportProgress';
+import * as videoActivities from './activities/uploadVideo';
 
 // 1. Start Health Server Immediately
 // Binding to '0.0.0.0' is mandatory for Kubernetes probes to connect
@@ -42,7 +43,7 @@ async function run() {
     connection,
     namespace: TEMPORAL_NAMESPACE,
     taskQueue: TASK_QUEUE,
-    workflowsPath: require.resolve('./workflows/image-batch-workflow'),
+    workflowsPath: require.resolve('./workflows/index'),
     bundlerOptions: {
       webpackConfigHook: (config: Configuration) => {
         config.infrastructureLogging = { level: 'error' };
@@ -56,6 +57,7 @@ async function run() {
       ...metadataActivities,
       ...persistActivities,
       ...reportActivities,
+      ...videoActivities,
     },
   });
 

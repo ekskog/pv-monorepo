@@ -204,11 +204,64 @@ const totalSizeMB = computed(() => {
   return (totalBytes / (1024 * 1024)).toFixed(2)
 })
 
+// Upload a single file to MinIO via a presigned PUT URL, reporting progress.
+async function uploadVideoWithPresignedUrl(file, fileIndex, totalFiles) {
+  const API_BASE_URL = apiService.getApiBaseUrl();
+  const token = apiService.getAuthToken();
+
+  // Step 1: get a presigned PUT URL from pv-api
+  const presignRes = await fetch(`${API_BASE_URL}/video/presign`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ folder: props.albumName, filename: file.name }),
+  });
+
+  if (!presignRes.ok) {
+    const err = await presignRes.json().catch(() => ({}));
+    throw new Error(err.error || `Presign request failed (${presignRes.status})`);
+  }
+
+  const { presignedUrl } = await presignRes.json();
+
+  // Step 2: PUT the raw file body directly to MinIO
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', (event) => {
+      if (!event.lengthComputable) return;
+      // Scale progress across all files in the batch
+      const filesDone = fileIndex;
+      const thisFile = event.loaded / event.total;
+      const overall = Math.round(((filesDone + thisFile) / totalFiles) * 100);
+      uploadProgress.value = overall;
+      uploadStatus.value = `Uploading ${file.name}… ${Math.round(thisFile * 100)}%`;
+    });
+
+    xhr.addEventListener('load', () => {
+      // MinIO presigned PUT returns 200 on success (no JSON body)
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`MinIO upload failed (${xhr.status})`));
+      }
+    });
+
+    xhr.addEventListener('error', () => reject(new Error('Network error during upload to MinIO')));
+    xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+
+    xhr.open('PUT', presignedUrl);
+    xhr.setRequestHeader('Content-Type', file.type || 'video/quicktime');
+    xhr.send(file);
+  });
+}
+
 async function uploadFiles() {
   if (selectedFiles.value.length === 0) return;
 
-  const actionType = uploadType.value === 'photos' ? 'upload_photos' : 'upload_photos';
-  if (!authService.canPerformAction(actionType)) {
+  if (!authService.canPerformAction('upload_photos')) {
     error.value = `You do not have permission to upload ${uploadType.value}`;
     return;
   }
@@ -220,100 +273,78 @@ async function uploadFiles() {
   uploadedFiles.value = new Set();
   failedFiles.value = new Set();
 
+  const isBulkUpload = uploadType.value === 'bulk-photos';
+  console.log('[MediaUpload] uploadType:', uploadType.value, '→ isBulkUpload:', isBulkUpload);
+
   try {
-    // Build FormData
-    const formData = new FormData();
-    const isBulkUpload = uploadType.value === 'bulk-photos'
-    console.log('[MediaUpload] uploadType:', uploadType.value, '→ isBulkUpload:', isBulkUpload)
-    const fieldName = isBulkUpload ? 'images' : 'files'
-    selectedFiles.value.forEach((file) => {
-      formData.append(fieldName, file);
-    });
+    if (isBulkUpload) {
+      // ── Bulk photo upload via Temporal ──────────────────────────────────
+      const formData = new FormData();
+      selectedFiles.value.forEach((file) => formData.append('images', file));
 
-    if (!isBulkUpload && props.albumName) {
-      formData.append("folderPath", props.albumName);
-    }
+      const API_BASE_URL = apiService.getApiBaseUrl();
+      const url = `${API_BASE_URL}/bulk/upload/${encodeURIComponent(props.albumName || '')}`;
+      const token = apiService.getAuthToken();
 
-    // Get API details
-    const API_BASE_URL = apiService.getApiBaseUrl();
-    const url = isBulkUpload
-      ? `${API_BASE_URL}/bulk/upload/${encodeURIComponent(props.albumName || '')}`
-      : `${API_BASE_URL}/buckets/${BUCKET_NAME}/upload`;
-    const token = apiService.getAuthToken();
+      const response = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
 
-    // Use XMLHttpRequest for progress tracking
-    const response = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-
-      // Track upload progress
-      xhr.upload.addEventListener("progress", (event) => {
-        if (event.lengthComputable) {
-          const percentComplete = Math.round((event.loaded / event.total) * 100);
-          uploadProgress.value = percentComplete;
-          uploadStatus.value = `Uploading ${selectedFiles.value.length} files... ${percentComplete}%`;
-          // Don't close dialog here - wait for server response
-        }
-      });
-
-      xhr.addEventListener("load", () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            uploadProgress.value = 100;
-            uploadStatus.value = `Upload complete! Processing starting...`;
-            resolve(response);
-          } catch (error) {
-            reject(new Error("Invalid JSON response"));
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            const pct = Math.round((event.loaded / event.total) * 100);
+            uploadProgress.value = pct;
+            uploadStatus.value = `Uploading ${selectedFiles.value.length} photos… ${pct}%`;
           }
-        } else {
-          reject(new Error(`HTTP error! status: ${xhr.status}`));
-        }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText)); }
+            catch { reject(new Error('Invalid JSON response')); }
+          } else {
+            reject(new Error(`HTTP error! status: ${xhr.status}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => reject(new Error('Network error occurred')));
+        xhr.addEventListener('abort', () => reject(new Error('Upload was cancelled')));
+
+        xhr.open('POST', url);
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.send(formData);
       });
 
-      xhr.addEventListener("error", () => {
-        reject(new Error("Network error occurred"));
-      });
+      if (!response.success) throw new Error(response.error || 'Upload failed');
+      if (!response.batchId) throw new Error('Bulk upload response missing batchId');
 
-      xhr.addEventListener("abort", () => {
-        reject(new Error("Upload was cancelled"));
-      });
+      const workflowId = `batch-${response.batchId}`;
+      console.log('[MediaUpload] Bulk upload accepted, workflowId:', workflowId);
+      pendingJobId.value = workflowId;
+      emit('jobReady', { mode: 'temporal-bulk', batchId: response.batchId, workflowId });
 
-      xhr.open("POST", url);
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    } else {
+      // ── Video upload: presigned PUT directly to MinIO ───────────────────
+      const total = selectedFiles.value.length;
+      for (let i = 0; i < total; i++) {
+        const file = selectedFiles.value[i];
+        uploadStatus.value = `Uploading ${file.name} (${i + 1}/${total})…`;
+        await uploadVideoWithPresignedUrl(file, i, total);
+        uploadedFiles.value.add(file.name);
       }
-      xhr.send(formData);
-    });
 
-    if (!response.success) {
-      throw new Error(response.error || 'Upload failed');
+      uploadProgress.value = 100;
+      uploadStatus.value = `${total} video${total !== 1 ? 's' : ''} uploaded successfully`;
+      console.log('[MediaUpload] All videos uploaded directly to MinIO');
+      pendingJobId.value = null;
+      emit('jobReady', { mode: 'legacy-video', jobId: null });
     }
-
-    if (!response.success || !response.batchId) {
-      throw new Error(response.error || 'Bulk upload accepted response missing batchId');
-    }
-
-    const workflowId = `batch-${response.batchId}`;
-    console.log('[MediaUpload] Bulk upload accepted, workflowId:', workflowId);
-    pendingJobId.value = workflowId;
-    emit('jobReady', {
-      mode: 'temporal-bulk',
-      batchId: response.batchId,
-      workflowId,
-    });
 
     // Close dialog after successful upload
     emit('close', {
       filesCount: selectedFiles.value.length,
       jobId: pendingJobId.value,
-      mode: uploadType.value === 'bulk-photos' ? 'temporal-bulk' : 'legacy-video'
+      mode: isBulkUpload ? 'temporal-bulk' : 'legacy-video',
     });
-
-    // Show success modal - skip that for now
-    // showUploadCompleteModal.value = true;
-
-    // Keep uploading state as true until processing is complete
-    // The parent component will monitor SSE events and update the UI accordingly
 
   } catch (err) {
     error.value = `Upload failed: ${err.message}`;
@@ -321,7 +352,6 @@ async function uploadFiles() {
     uploading.value = false;
     uploadProgress.value = 0;
     uploadStatus.value = `Upload failed: ${err.message}`;
-    // Don't close dialog on error - let user see the error message
   }
 }
 

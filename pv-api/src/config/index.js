@@ -39,9 +39,9 @@ const config = {
     accessKey: process.env.MINIO_ACCESS_KEY,
     secretKey: process.env.MINIO_SECRET_KEY,
     bucketName: process.env.MINIO_BUCKET_NAME || "pv",
-    // When set, presigned image URLs are rewritten to this public base URL
-    // so the browser fetches directly from MinIO, bypassing pv-api.
-    // Example: "https://vault-minio.ekskog.net"
+    // When set, presigned video upload URLs use this public base URL so the
+    // browser can PUT files directly to MinIO, bypassing pv-api and any proxy size limits.
+    // Example: "https://objects.ekskog.net"
     publicUrl: process.env.MINIO_PUBLIC_URL || null,
   },
 

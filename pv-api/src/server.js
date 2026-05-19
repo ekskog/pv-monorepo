@@ -129,6 +129,7 @@ const healthRoutes = require("./routes/health");
 const albumRoutes = require("./routes/albums");
 const statRoutes = require("./routes/stats");
 const temporalRoutes = require("./routes/temporalUploads"); // Added this for the new Temporal route
+const videoUploadRoutes = require("./routes/videoUpload");
 
 // Store pending jobs by job ID (used by upload/album routes)
 const pendingJobs = new Map();
@@ -455,6 +456,7 @@ async function startServer() {
     }
 
     app.use("/bulk", temporalRoutes(getTemporalClient, config, { sendSSEEvent, persistProgress, getProgress }));
+    app.use("/video", videoUploadRoutes(minioClient, publicMinioClient));
     app.use("/", healthRoutes(minioClient, temporalClient));
 
     //debugServer(`[server.js] Database initialized successfully`);
